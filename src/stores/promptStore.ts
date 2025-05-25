@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { toast } from "sonner";
 import { llmService } from "@/services/llm";
+import { promptPersistenceService } from "@/services/promptPersistenceService";
 import type {
   TextGenerationOptions,
   TextResponse,
@@ -36,6 +37,11 @@ interface PromptStore {
   // 状态
   entries: PromptEntry[];
   isSubmitting: boolean;
+  isLoading: boolean;
+
+  // ID映射：内存ID -> 数据库ID
+  promptIdMap: Map<string, number>;
+  responseIdMap: Map<string, number>;
 
   // 操作
   submitPrompt: (data: {
@@ -56,6 +62,16 @@ interface PromptStore {
 
   clearHistory: () => void;
 
+  deleteEntry: (entryId: string) => Promise<void>;
+
+  // 数据持久化相关
+  loadHistoryFromDB: (options?: {
+    limit?: number;
+    offset?: number;
+  }) => Promise<void>;
+
+  refreshFromDB: () => Promise<void>;
+
   // 工具函数
   getEntryById: (id: string) => PromptEntry | undefined;
 
@@ -72,6 +88,9 @@ export const usePromptStore = create<PromptStore>()(
     (set, get) => ({
       entries: [],
       isSubmitting: false,
+      isLoading: false,
+      promptIdMap: new Map(),
+      responseIdMap: new Map(),
 
       submitPrompt: async (data) => {
         const { prompt, providers, models, enableStreaming = true } = data;
@@ -95,6 +114,19 @@ export const usePromptStore = create<PromptStore>()(
           set((state) => ({
             entries: [promptEntry, ...state.entries],
           }));
+
+          // 保存提示到 IndexedDB
+          const savedPromptId = await promptPersistenceService.savePrompt(
+            promptEntry
+          );
+          if (savedPromptId) {
+            // 存储ID映射
+            set((state) => {
+              const newPromptIdMap = new Map(state.promptIdMap);
+              newPromptIdMap.set(promptId, savedPromptId);
+              return { promptIdMap: newPromptIdMap };
+            });
+          }
 
           // 为每个模型创建响应任务
           const responsePromises = models.map(async (modelKey) => {
@@ -124,6 +156,23 @@ export const usePromptStore = create<PromptStore>()(
               );
               return { entries: updatedEntries };
             });
+
+            // 保存响应到 IndexedDB（如果提示已保存）
+            const dbPromptId = get().promptIdMap.get(promptId);
+            if (dbPromptId) {
+              const dbResponseId = await promptPersistenceService.saveResponse(
+                response,
+                dbPromptId
+              );
+              if (dbResponseId) {
+                // 存储响应ID映射
+                set((state) => {
+                  const newResponseIdMap = new Map(state.responseIdMap);
+                  newResponseIdMap.set(responseId, dbResponseId);
+                  return { responseIdMap: newResponseIdMap };
+                });
+              }
+            }
 
             try {
               // 调用LLM服务
@@ -204,6 +253,15 @@ export const usePromptStore = create<PromptStore>()(
             );
             return { entries: updatedEntries };
           });
+
+          // 同时更新 IndexedDB 中的提示状态
+          const promptDbId = get().promptIdMap.get(promptId);
+          if (promptDbId) {
+            promptPersistenceService.updatePromptStatus(
+              promptDbId,
+              "completed"
+            );
+          }
 
           // 显示完成通知
           const successCount = results.filter(
@@ -362,6 +420,12 @@ export const usePromptStore = create<PromptStore>()(
           }));
           return { entries: updatedEntries };
         });
+
+        // 同时更新 IndexedDB
+        const dbResponseId = get().responseIdMap.get(responseId);
+        if (dbResponseId) {
+          promptPersistenceService.updateResponse(dbResponseId, updates);
+        }
       },
 
       appendStreamContent: (responseId, content) => {
@@ -400,8 +464,118 @@ export const usePromptStore = create<PromptStore>()(
         set({ entries: [] });
       },
 
+      deleteEntry: async (entryId) => {
+        try {
+          console.log(`🗑️ Attempting to delete entry: ${entryId}`);
+
+          // 获取数据库 ID
+          const dbPromptId = get().promptIdMap.get(entryId);
+          console.log(`📋 Database prompt ID: ${dbPromptId}`);
+
+          // 获取要删除的条目信息（用于日志）
+          const entryToDelete = get().entries.find(
+            (entry) => entry.id === entryId
+          );
+          if (!entryToDelete) {
+            throw new Error(`Entry with ID ${entryId} not found in memory`);
+          }
+
+          console.log(
+            `📝 Entry to delete: "${entryToDelete.prompt.substring(0, 50)}..."`
+          );
+
+          // 从数据库删除
+          if (dbPromptId) {
+            console.log(`🗄️ Deleting from database with ID: ${dbPromptId}`);
+            await promptPersistenceService.deletePrompt(dbPromptId);
+            console.log(`✅ Successfully deleted from database`);
+          } else {
+            console.warn(
+              `⚠️ No database ID found for entry ${entryId}, skipping database deletion`
+            );
+          }
+
+          // 从内存状态中删除
+          set((state) => ({
+            entries: state.entries.filter((entry) => entry.id !== entryId),
+            promptIdMap: (() => {
+              const newMap = new Map(state.promptIdMap);
+              newMap.delete(entryId);
+              return newMap;
+            })(),
+            responseIdMap: (() => {
+              // 删除相关的响应 ID 映射
+              const newMap = new Map(state.responseIdMap);
+              entryToDelete.responses.forEach((response) => {
+                newMap.delete(response.id);
+              });
+              return newMap;
+            })(),
+          }));
+
+          console.log(
+            `✅ Entry ${entryId} deleted successfully from memory and database`
+          );
+        } catch (error) {
+          console.error(`❌ Failed to delete entry ${entryId}:`, error);
+          throw error;
+        }
+      },
+
       getEntryById: (id) => {
         return get().entries.find((entry) => entry.id === id);
+      },
+
+      loadHistoryFromDB: async (options) => {
+        set({ isLoading: true });
+        try {
+          const entries = await promptPersistenceService.loadPromptHistory(
+            options
+          );
+
+          // 重新建立 ID 映射关系
+          const promptIdMap = new Map<string, number>();
+          const responseIdMap = new Map<string, number>();
+
+          entries.forEach((entry) => {
+            // 从数据库加载的条目，其 ID 就是数据库 ID 的字符串形式
+            const dbPromptId = parseInt(entry.id);
+            if (!isNaN(dbPromptId)) {
+              promptIdMap.set(entry.id, dbPromptId);
+            }
+
+            entry.responses.forEach((response) => {
+              const dbResponseId = parseInt(response.id);
+              if (!isNaN(dbResponseId)) {
+                responseIdMap.set(response.id, dbResponseId);
+              }
+            });
+          });
+
+          set({
+            entries,
+            isLoading: false,
+            promptIdMap,
+            responseIdMap,
+          });
+
+          // 只在有数据或调试模式时打印日志
+          if (entries.length > 0) {
+            console.log(`✅ Loaded ${entries.length} entries from IndexedDB`);
+            console.log(
+              `✅ Rebuilt ID mappings: ${promptIdMap.size} prompts, ${responseIdMap.size} responses`
+            );
+          } else if (process.env.NEXT_PUBLIC_DEBUG_DB === "true") {
+            console.log(`📝 No entries found in IndexedDB`);
+          }
+        } catch (error) {
+          console.error("❌ Failed to load history from IndexedDB:", error);
+          set({ isLoading: false });
+        }
+      },
+
+      refreshFromDB: async () => {
+        await get().loadHistoryFromDB({ limit: 50 });
       },
     }),
     {

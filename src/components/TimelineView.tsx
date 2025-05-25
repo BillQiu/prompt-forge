@@ -26,7 +26,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { usePromptStore } from "@/stores/promptStore";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -47,9 +47,34 @@ type StatusFilter = "all" | "pending" | "success" | "error" | "cancelled";
 type ProviderFilter = "all" | string;
 
 export default function TimelineView({ className }: TimelineViewProps) {
-  const { entries, isSubmitting } = usePromptStore();
+  const { entries, isSubmitting, isLoading, loadHistoryFromDB } =
+    usePromptStore();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
+
+  // 在组件挂载时加载历史数据
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoadError(null);
+        await loadHistoryFromDB({ limit: 50 });
+        setHasInitialLoaded(true);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "加载历史数据失败";
+        setLoadError(errorMessage);
+        setHasInitialLoaded(true);
+        console.error("Failed to load timeline data:", error);
+      }
+    };
+
+    // 只在还没有初始加载过且不在加载中时才加载数据
+    if (!hasInitialLoaded && !isLoading) {
+      loadData();
+    }
+  }, [hasInitialLoaded, isLoading, loadHistoryFromDB]);
 
   // 获取所有提供商列表
   const allProviders = useMemo(() => {
@@ -107,8 +132,17 @@ export default function TimelineView({ className }: TimelineViewProps) {
     return { total, pending, completed, errors };
   }, [entries]);
 
-  const handleRefresh = () => {
-    window.location.reload();
+  const handleRefresh = async () => {
+    try {
+      setLoadError(null);
+      await loadHistoryFromDB({ limit: 50 });
+      setHasInitialLoaded(true);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "刷新数据失败";
+      setLoadError(errorMessage);
+      console.error("Failed to refresh timeline data:", error);
+    }
   };
 
   const handleNewPrompt = () => {
@@ -136,9 +170,22 @@ export default function TimelineView({ className }: TimelineViewProps) {
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleRefresh}>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                刷新
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isLoading}
+              >
+                <RefreshCw
+                  className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+                />
+                {isLoading
+                  ? "加载中..."
+                  : !hasInitialLoaded
+                  ? "加载数据"
+                  : entries.length === 0
+                  ? "重新加载"
+                  : "刷新"}
               </Button>
               <Button size="sm" onClick={handleNewPrompt}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -224,6 +271,30 @@ export default function TimelineView({ className }: TimelineViewProps) {
         )}
       </Card>
 
+      {/* 错误状态显示 */}
+      {loadError && (
+        <Card className="mb-6 border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3 text-red-700">
+              <div className="text-red-500">⚠️</div>
+              <div>
+                <p className="font-medium">数据加载失败</p>
+                <p className="text-sm text-red-600">{loadError}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isLoading}
+                className="ml-auto"
+              >
+                重试
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* 时间轴网格 */}
       {filteredEntries.length === 0 ? (
         <Card>
@@ -232,12 +303,22 @@ export default function TimelineView({ className }: TimelineViewProps) {
               <MessageCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
               {entries.length === 0 ? (
                 <>
-                  <h3 className="text-lg font-medium mb-2">还没有对话记录</h3>
-                  <p className="text-sm mb-4">开始您的第一次AI对话吧！</p>
-                  <Button onClick={handleNewPrompt}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    创建新对话
-                  </Button>
+                  <h3 className="text-lg font-medium mb-2">
+                    {!hasInitialLoaded
+                      ? "正在加载对话记录..."
+                      : "还没有对话记录"}
+                  </h3>
+                  <p className="text-sm mb-4">
+                    {!hasInitialLoaded
+                      ? "请稍候..."
+                      : "开始您的第一次AI对话吧！"}
+                  </p>
+                  {hasInitialLoaded && (
+                    <Button onClick={handleNewPrompt}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      创建新对话
+                    </Button>
+                  )}
                 </>
               ) : (
                 <>

@@ -174,6 +174,15 @@ export const dbHelpers = {
     return await query.toArray();
   },
 
+  async deletePrompt(id: number): Promise<void> {
+    await db.transaction("rw", [db.prompts, db.responses], async () => {
+      // 先删除相关的响应
+      await db.responses.where("promptId").equals(id).delete();
+      // 再删除提示
+      await db.prompts.delete(id);
+    });
+  },
+
   // 响应相关操作
   async createResponse(responseData: Omit<Response, "id">): Promise<number> {
     return await db.responses.add(responseData);

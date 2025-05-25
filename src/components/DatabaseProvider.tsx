@@ -17,7 +17,7 @@ export default function DatabaseProvider({ children }: DatabaseProviderProps) {
         const success = await initializeDatabase();
         if (success) {
           setIsInitialized(true);
-          console.log("✅ Database initialized successfully");
+          // 数据库初始化成功日志已在 initializeDatabase 中打印，避免重复
         } else {
           setError("数据库初始化失败");
           console.error("❌ Database initialization failed");

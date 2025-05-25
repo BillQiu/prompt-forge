@@ -11,6 +11,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Clock,
   MessageCircle,
   Zap,
@@ -22,6 +32,7 @@ import {
   BarChart3,
   Award,
   TrendingUp,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -65,7 +76,8 @@ export default function PromptTimelineCard({
   index = 0,
 }: PromptTimelineCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [compareMode, setCompareMode] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const { deleteEntry } = usePromptStore();
 
   const formatTime = (date: Date) => {
     return new Intl.DateTimeFormat("zh-CN", {
@@ -134,6 +146,30 @@ export default function PromptTimelineCard({
       console.error("Failed to retry prompt:", error);
       toast.error("重试失败", {
         description: "无法重新提交请求，请稍后再试",
+        duration: 3000,
+      });
+    }
+  };
+
+  const handleDelete = () => {
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
+      console.log(`🗑️ UI: Starting delete for entry ${entry.id}`);
+      await deleteEntry(entry.id);
+      setShowDeleteDialog(false);
+      console.log(`✅ UI: Delete completed for entry ${entry.id}`);
+      toast.success("对话已删除", {
+        description: "对话记录已成功删除",
+        duration: 2000,
+      });
+    } catch (error) {
+      console.error("❌ UI: Failed to delete entry:", error);
+      setShowDeleteDialog(false); // 关闭对话框即使失败
+      toast.error("删除失败", {
+        description: "无法删除对话记录，请稍后再试",
         duration: 3000,
       });
     }
@@ -231,6 +267,7 @@ export default function PromptTimelineCard({
                 size="sm"
                 onClick={() => copyToClipboard(entry.prompt)}
                 className="h-8 w-8 p-0"
+                title="复制提示词"
               >
                 <Copy className="w-3 h-3" />
               </Button>
@@ -239,8 +276,18 @@ export default function PromptTimelineCard({
                 size="sm"
                 onClick={handleRetry}
                 className="h-8 w-8 p-0"
+                title="重新提交"
               >
                 <RotateCcw className="w-3 h-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDelete}
+                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                title="删除对话"
+              >
+                <Trash2 className="w-3 h-3" />
               </Button>
             </div>
           </div>
@@ -335,6 +382,27 @@ export default function PromptTimelineCard({
           </div>
         </CardContent>
       </Card>
+
+      {/* 删除确认对话框 */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除对话</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除这个对话记录吗？此操作不可撤销，将同时删除所有相关的响应数据。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 }
