@@ -43,6 +43,9 @@ interface PromptStore {
   promptIdMap: Map<string, number>;
   responseIdMap: Map<string, number>;
 
+  // 防抖更新映射：responseId -> 定时器ID
+  debounceTimers: Map<string, NodeJS.Timeout>;
+
   // 操作
   submitPrompt: (data: {
     prompt: string;
@@ -81,6 +84,9 @@ interface PromptStore {
     responseId: string,
     startTime: number
   ) => Promise<void>;
+
+  // 强制同步响应到数据库
+  flushResponseToDatabase: (responseId: string) => Promise<void>;
 }
 
 export const usePromptStore = create<PromptStore>()(
@@ -91,6 +97,7 @@ export const usePromptStore = create<PromptStore>()(
       isLoading: false,
       promptIdMap: new Map(),
       responseIdMap: new Map(),
+      debounceTimers: new Map(),
 
       submitPrompt: async (data) => {
         const { prompt, providers, models, enableStreaming = true } = data;
@@ -399,6 +406,21 @@ export const usePromptStore = create<PromptStore>()(
             isStreaming: false,
           });
         } finally {
+          // 清理防抖定时器
+          const store = get();
+          const existingTimer = store.debounceTimers.get(responseId);
+          if (existingTimer) {
+            clearTimeout(existingTimer);
+            set((state) => {
+              const newTimers = new Map(state.debounceTimers);
+              newTimers.delete(responseId);
+              return { debounceTimers: newTimers };
+            });
+          }
+
+          // 确保最终状态同步到数据库
+          await get().flushResponseToDatabase(responseId);
+
           // 确保资源清理
           try {
             reader.releaseLock();
@@ -429,6 +451,7 @@ export const usePromptStore = create<PromptStore>()(
       },
 
       appendStreamContent: (responseId, content) => {
+        // 立即更新内存状态
         set((state) => {
           const updatedEntries = state.entries.map((entry) => ({
             ...entry,
@@ -439,6 +462,34 @@ export const usePromptStore = create<PromptStore>()(
             ),
           }));
           return { entries: updatedEntries };
+        });
+
+        // 防抖更新数据库（避免频繁写入）
+        const store = get();
+        const existingTimer = store.debounceTimers.get(responseId);
+
+        // 清除之前的定时器
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+        }
+
+        // 设置新的防抖定时器（500ms 延迟）
+        const newTimer = setTimeout(async () => {
+          console.log(`⏰ Debounce timer triggered for response ${responseId}`);
+          await store.flushResponseToDatabase(responseId);
+          // 清理定时器映射
+          set((state) => {
+            const newTimers = new Map(state.debounceTimers);
+            newTimers.delete(responseId);
+            return { debounceTimers: newTimers };
+          });
+        }, 500);
+
+        // 存储新定时器
+        set((state) => {
+          const newTimers = new Map(state.debounceTimers);
+          newTimers.set(responseId, newTimer);
+          return { debounceTimers: newTimers };
         });
       },
 
@@ -458,6 +509,23 @@ export const usePromptStore = create<PromptStore>()(
           }));
           return { entries: updatedEntries };
         });
+
+        // 清理防抖定时器
+        const store = get();
+        const existingTimer = store.debounceTimers.get(responseId);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          set((state) => {
+            const newTimers = new Map(state.debounceTimers);
+            newTimers.delete(responseId);
+            return { debounceTimers: newTimers };
+          });
+        }
+
+        // 立即同步取消状态到数据库
+        setTimeout(() => {
+          get().flushResponseToDatabase(responseId);
+        }, 0);
       },
 
       clearHistory: () => {
@@ -557,6 +625,7 @@ export const usePromptStore = create<PromptStore>()(
             isLoading: false,
             promptIdMap,
             responseIdMap,
+            debounceTimers: new Map(), // 重置防抖定时器
           });
 
           // 只在有数据或调试模式时打印日志
@@ -576,6 +645,29 @@ export const usePromptStore = create<PromptStore>()(
 
       refreshFromDB: async () => {
         await get().loadHistoryFromDB({ limit: 50 });
+      },
+
+      flushResponseToDatabase: async (responseId: string) => {
+        const dbResponseId = get().responseIdMap.get(responseId);
+        if (!dbResponseId) return;
+
+        const response = get()
+          .entries.flatMap((e) => e.responses)
+          .find((r) => r.id === responseId);
+
+        if (!response) return;
+
+        try {
+          await promptPersistenceService.updateResponse(dbResponseId, {
+            response: response.response,
+            status: response.status,
+            duration: response.duration,
+            error: response.error,
+          });
+          console.log(`💾 Flushed response ${responseId} to database`);
+        } catch (error) {
+          console.error(`❌ Failed to flush response ${responseId}:`, error);
+        }
       },
     }),
     {
