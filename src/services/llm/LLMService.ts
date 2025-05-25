@@ -10,6 +10,8 @@ import {
   LLMAdapterError,
 } from "./BaseAdapter";
 import { MockAdapterFactory } from "./adapters/MockAdapter";
+import { OpenAIAdapterFactory } from "./adapters/OpenAIAdapter";
+import { apiKeyService } from "../apiKeyService";
 
 /**
  * 提供者注册信息
@@ -62,8 +64,9 @@ export class LLMService {
       this.config = { ...this.config, ...config };
     }
 
-    // 默认注册 Mock 适配器
+    // 默认注册适配器
     this.registerProvider(new MockAdapterFactory());
+    this.registerProvider(new OpenAIAdapterFactory());
 
     this.log("LLM Service initialized");
   }
@@ -225,7 +228,66 @@ export class LLMService {
   }
 
   /**
-   * 执行文本生成
+   * 自动获取API密钥并执行文本生成
+   */
+  async generateTextWithStoredKey(
+    providerId: string,
+    prompt: string,
+    options: TextGenerationOptions
+  ): Promise<ExecutionResult<TextResponse | ReadableStream<StreamChunk>>> {
+    try {
+      // 从安全存储中获取API密钥
+      const keyResult = await apiKeyService.safeGetApiKey(providerId);
+
+      if (!keyResult.success) {
+        const duration = 0;
+        return {
+          success: false,
+          error: new LLMAdapterError(
+            keyResult.userMessage ||
+              `Failed to retrieve API key for ${providerId}`,
+            keyResult.error || "API_KEY_ERROR",
+            401
+          ),
+          providerId,
+          modelId: options.model,
+          duration,
+        };
+      }
+
+      // 使用检索到的API密钥生成文本
+      const result = await this.generateText(
+        providerId,
+        prompt,
+        options,
+        keyResult.apiKey!
+      );
+
+      // 清理敏感数据
+      apiKeyService.clearSensitiveData();
+
+      return result;
+    } catch (error) {
+      const llmError =
+        error instanceof LLMAdapterError
+          ? error
+          : new LLMAdapterError(
+              `Failed to generate text with stored key: ${error}`,
+              "UNEXPECTED_ERROR"
+            );
+
+      return {
+        success: false,
+        error: llmError,
+        providerId,
+        modelId: options.model,
+        duration: 0,
+      };
+    }
+  }
+
+  /**
+   * 执行文本生成（需要手动传入API密钥）
    */
   async generateText(
     providerId: string,
@@ -278,7 +340,66 @@ export class LLMService {
   }
 
   /**
-   * 执行图像生成
+   * 自动获取API密钥并执行图像生成
+   */
+  async generateImageWithStoredKey(
+    providerId: string,
+    prompt: string,
+    options: ImageGenerationOptions
+  ): Promise<ExecutionResult<ImageResponse[]>> {
+    try {
+      // 从安全存储中获取API密钥
+      const keyResult = await apiKeyService.safeGetApiKey(providerId);
+
+      if (!keyResult.success) {
+        const duration = 0;
+        return {
+          success: false,
+          error: new LLMAdapterError(
+            keyResult.userMessage ||
+              `Failed to retrieve API key for ${providerId}`,
+            keyResult.error || "API_KEY_ERROR",
+            401
+          ),
+          providerId,
+          modelId: options.model,
+          duration,
+        };
+      }
+
+      // 使用检索到的API密钥生成图像
+      const result = await this.generateImage(
+        providerId,
+        prompt,
+        options,
+        keyResult.apiKey!
+      );
+
+      // 清理敏感数据
+      apiKeyService.clearSensitiveData();
+
+      return result;
+    } catch (error) {
+      const llmError =
+        error instanceof LLMAdapterError
+          ? error
+          : new LLMAdapterError(
+              `Failed to generate image with stored key: ${error}`,
+              "UNEXPECTED_ERROR"
+            );
+
+      return {
+        success: false,
+        error: llmError,
+        providerId,
+        modelId: options.model,
+        duration: 0,
+      };
+    }
+  }
+
+  /**
+   * 执行图像生成（需要手动传入API密钥）
    */
   async generateImage(
     providerId: string,
@@ -399,6 +520,93 @@ export class LLMService {
       provider.instance = undefined;
     }
     this.log("Adapter cache cleared");
+  }
+
+  /**
+   * 检查提供者连接状态
+   */
+  async checkProviderHealth(providerId: string): Promise<{
+    healthy: boolean;
+    message: string;
+    latency?: number;
+  }> {
+    const startTime = Date.now();
+
+    try {
+      const adapter = this.getAdapter(providerId);
+
+      // 尝试获取API密钥
+      const keyResult = await apiKeyService.safeGetApiKey(providerId);
+      if (!keyResult.success) {
+        return {
+          healthy: false,
+          message: keyResult.userMessage || "API密钥未配置",
+        };
+      }
+
+      // 验证API密钥
+      const isValid = await adapter.validateApiKey(keyResult.apiKey!);
+      const latency = Date.now() - startTime;
+
+      if (isValid) {
+        return {
+          healthy: true,
+          message: "连接正常",
+          latency,
+        };
+      } else {
+        return {
+          healthy: false,
+          message: "API密钥验证失败",
+          latency,
+        };
+      }
+    } catch (error) {
+      const latency = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : "未知错误";
+
+      return {
+        healthy: false,
+        message: `连接失败: ${errorMessage}`,
+        latency,
+      };
+    }
+  }
+
+  /**
+   * 检查所有启用提供者的健康状态
+   */
+  async checkAllProvidersHealth(): Promise<
+    Record<
+      string,
+      {
+        healthy: boolean;
+        message: string;
+        latency?: number;
+      }
+    >
+  > {
+    const results: Record<
+      string,
+      {
+        healthy: boolean;
+        message: string;
+        latency?: number;
+      }
+    > = {};
+
+    const enabledProviders = Array.from(this.providers.entries())
+      .filter(([_, registration]) => registration.enabled)
+      .map(([id]) => id);
+
+    await Promise.allSettled(
+      enabledProviders.map(async (providerId) => {
+        const health = await this.checkProviderHealth(providerId);
+        results[providerId] = health;
+      })
+    );
+
+    return results;
   }
 
   /**
