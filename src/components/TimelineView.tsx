@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { usePromptStore } from "@/stores/promptStore";
 import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -47,6 +48,7 @@ type StatusFilter = "all" | "pending" | "success" | "error" | "cancelled";
 type ProviderFilter = "all" | string;
 
 export default function TimelineView({ className }: TimelineViewProps) {
+  const router = useRouter();
   const { entries, isSubmitting, isLoading, loadHistoryFromDB } =
     usePromptStore();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -146,7 +148,7 @@ export default function TimelineView({ className }: TimelineViewProps) {
   };
 
   const handleNewPrompt = () => {
-    window.location.href = "/test-form";
+    router.push("/test-form");
   };
 
   const handleClearFilters = () => {
