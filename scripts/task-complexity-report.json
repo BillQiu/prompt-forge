@@ -1,0 +1,155 @@
+{
+  "meta": {
+    "generatedAt": "2025-05-25T04:10:27.408Z",
+    "tasksAnalyzed": 18,
+    "thresholdScore": 6,
+    "projectName": "Taskmaster",
+    "usedResearch": true
+  },
+  "complexityAnalysis": [
+    {
+      "taskId": 1,
+      "taskTitle": "Initialize Next.js 15 Project with TailwindCSS and shadcn/ui",
+      "complexityScore": 4,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Break down the initialization of the Next.js 15 project into subtasks covering project setup with create-next-app, integration of TailwindCSS, and installation plus configuration of shadcn/ui components. Include steps for creating basic layout components like Header and MainContent.",
+      "reasoning": "This task involves setting up a new project with specific configurations and integrations. While straightforward for experienced developers, it requires multiple distinct steps (project creation, styling setup, component library integration, and layout creation) that can be divided into subtasks for clarity and tracking."
+    },
+    {
+      "taskId": 2,
+      "taskTitle": "Implement State Management (Zustand) and IndexedDB (Dexie.js)",
+      "complexityScore": 6,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Divide this task into subtasks for installing and configuring Zustand for state management, setting up Dexie.js for IndexedDB, defining schemas for data storage, and ensuring initialization and accessibility of the database. Focus on creating specific stores for UI and user settings.",
+      "reasoning": "This task combines two significant technical integrations (Zustand for state and Dexie.js for persistence) with schema design. It requires careful setup and testing of each component, justifying a moderate complexity score and multiple subtasks to handle installation, configuration, and validation."
+    },
+    {
+      "taskId": 3,
+      "taskTitle": "Develop API Key Management UI and Secure Storage Logic (ST-101)",
+      "complexityScore": 7,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Split this task into subtasks for designing the API key management UI, implementing form validation with React Hook Form and Zod, developing encryption logic using Web Crypto API, and integrating secure storage with IndexedDB via Dexie.js.",
+      "reasoning": "This task involves UI development, form validation, and complex security features like encryption. The need to handle sensitive data securely increases complexity, and breaking it into subtasks helps manage the distinct areas of UI, validation, encryption, and storage."
+    },
+    {
+      "taskId": 4,
+      "taskTitle": "Design and Implement LLM Provider Adapter Architecture",
+      "complexityScore": 7,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Decompose this task into subtasks for defining the base adapter interface, implementing a mock adapter for testing, and creating a central LLM service to manage adapter instances. Ensure focus on modularity and extensibility for future provider integrations.",
+      "reasoning": "Designing an adapter pattern for multiple LLM providers requires careful abstraction and interface definition. The complexity lies in ensuring modularity and testability, warranting subtasks for interface design, mock implementation, and service management."
+    },
+    {
+      "taskId": 5,
+      "taskTitle": "Develop Core Text Prompt Submission Interface (ST-103)",
+      "complexityScore": 5,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Break this task into subtasks for creating the prompt input form UI with React Hook Form, implementing provider/model multi-select functionality, and adding form validation with Zod for prompt length and selection requirements.",
+      "reasoning": "This task focuses on UI development with form handling and validation. While not overly complex, it involves multiple components (text input, multi-select, validation) that can be split into subtasks for better organization and focus on user experience."
+    },
+    {
+      "taskId": 6,
+      "taskTitle": "Implement Basic Timeline Interface with Responsive Grid (ST-105)",
+      "complexityScore": 5,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Divide this task into subtasks for designing the responsive grid layout using TailwindCSS, creating the basic timeline card component for displaying mock data, and implementing optional animations with Framer Motion for entry effects.",
+      "reasoning": "This task involves UI design with responsive layouts and component creation. The complexity is moderate due to the need for responsive design across breakpoints, justifying subtasks for layout, card design, and optional enhancements like animations."
+    },
+    {
+      "taskId": 7,
+      "taskTitle": "Implement Text Prompt Execution for a Single Provider (OpenAI)",
+      "complexityScore": 6,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Split this task into subtasks for implementing the OpenAI adapter, integrating API key retrieval from secure storage, handling prompt submission with loading states, and adding basic error handling for API interactions.",
+      "reasoning": "Integrating a specific LLM provider involves adapter implementation, secure data handling, and UI updates for loading/error states. The moderate complexity and dependency on prior tasks suggest breaking it into subtasks for adapter, security, submission, and error handling."
+    },
+    {
+      "taskId": 8,
+      "taskTitle": "Implement Real-time Streaming of Responses to Timeline (ST-103)",
+      "complexityScore": 7,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Decompose this task into subtasks for updating the OpenAI adapter to support streaming, implementing stream consumption and text decoding in the UI, and ensuring responsive UI updates with proper stream lifecycle management.",
+      "reasoning": "Streaming responses add technical complexity due to real-time data handling and UI updates. Subtasks are needed to address adapter modifications, stream processing, and UI responsiveness, reflecting the moderate-high complexity score."
+    },
+    {
+      "taskId": 9,
+      "taskTitle": "Enable Simultaneous Prompt Submission to Multiple Selected Providers",
+      "complexityScore": 6,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Break this task into subtasks for modifying the form submission handler to support multiple providers, managing concurrent requests with Promise.allSettled, and updating the timeline UI to display individual provider responses or errors.",
+      "reasoning": "Handling concurrent requests to multiple providers introduces complexity in asynchronous programming and UI updates. Subtasks help manage form handling, concurrency, and display logic, aligning with the moderate complexity score."
+    },
+    {
+      "taskId": 10,
+      "taskTitle": "Implement Result Management - Copy and Retry (ST-107)",
+      "complexityScore": 4,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Divide this task into subtasks for adding copy functionality for prompt and response text, implementing the retry feature with stored parameters, and providing visual feedback for user actions using toast notifications.",
+      "reasoning": "This task involves straightforward UI enhancements but requires careful handling of data retrieval for retry functionality. Subtasks for copy, retry, and feedback ensure each feature is implemented and tested separately."
+    },
+    {
+      "taskId": 11,
+      "taskTitle": "Local Data Persistence for Prompts & Responses (ST-102, ST-111)",
+      "complexityScore": 6,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Split this task into subtasks for extending Dexie.js schemas for prompt/response data, implementing automatic data saving during submission and streaming, loading data on app startup for timeline population, and handling IndexedDB errors.",
+      "reasoning": "Persisting data locally with real-time updates and loading on startup involves moderate complexity due to database interactions and lifecycle management. Subtasks address schema design, saving, loading, and error handling for clarity."
+    },
+    {
+      "taskId": 12,
+      "taskTitle": "Implement Filtering and Sorting for Timeline (ST-106)",
+      "complexityScore": 5,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Decompose this task into subtasks for creating the filter bar UI with controls for provider, status, and date, managing filter/sort state with Zustand and persistence, and modifying Dexie.js queries to apply filters and sorting.",
+      "reasoning": "Adding filtering and sorting involves UI development, state management, and database query modifications. The moderate complexity justifies subtasks for UI, state persistence, and data retrieval logic."
+    },
+    {
+      "taskId": 13,
+      "taskTitle": "Develop UI for Image Generation Requests and Mode Switch (ST-104)",
+      "complexityScore": 5,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Break this task into subtasks for implementing the mode switcher in the header, creating the image prompt form UI with parameter controls, and managing mode state with Zustand for form switching.",
+      "reasoning": "This task focuses on UI development with state management for mode switching. Subtasks for switcher, form, and state handling help organize the work, reflecting the moderate complexity of integrating new interaction modes."
+    },
+    {
+      "taskId": 14,
+      "taskTitle": "Implement Image Generation Execution and Thumbnail Display (ST-104, ST-109)",
+      "complexityScore": 7,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Divide this task into subtasks for extending the OpenAI adapter for image generation, updating timeline cards to display image thumbnails, implementing lazy loading for images, and adding click-to-download functionality for full-resolution images.",
+      "reasoning": "Implementing image generation involves adapter updates, UI modifications, and performance considerations like lazy loading. The complexity is moderate-high, and subtasks help manage adapter logic, display, loading, and download features."
+    },
+    {
+      "taskId": 15,
+      "taskTitle": "Implement Advanced Provider Configuration (ST-108)",
+      "complexityScore": 6,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Split this task into subtasks for creating configuration UI for provider parameters, defining and using Zod schemas for dynamic forms, and persisting configurations in IndexedDB for use in API requests.",
+      "reasoning": "Configuring provider-specific parameters involves dynamic UI, validation, and persistence. Subtasks for UI, schema handling, and storage address the moderate complexity of ensuring flexibility and user customization."
+    },
+    {
+      "taskId": 16,
+      "taskTitle": "Configure PWA Manifest and Service Worker for Basic Offline Support (ST-110)",
+      "complexityScore": 6,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Decompose this task into subtasks for setting up the PWA manifest for installability, implementing a service worker for caching app shell, and enabling offline access to IndexedDB data with an offline indicator.",
+      "reasoning": "Setting up PWA features involves manifest configuration and service worker logic for offline support. The moderate complexity arises from caching strategies and offline UX, justifying subtasks for manifest, worker, and offline handling."
+    },
+    {
+      "taskId": 17,
+      "taskTitle": "Enhance Accessibility: Keyboard Navigation, ARIA, Focus Management (WCAG 2.2 AA)",
+      "complexityScore": 7,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break this task into subtasks for ensuring keyboard navigation across all interactive elements, adding ARIA roles and attributes for accessibility, managing focus for modals and dynamic content, and testing with screen readers and automated tools.",
+      "reasoning": "Accessibility enhancements require detailed attention to standards like WCAG 2.2 AA, involving multiple aspects (keyboard, ARIA, focus, testing). The complexity is moderate-high, and subtasks ensure comprehensive coverage of accessibility needs."
+    },
+    {
+      "taskId": 18,
+      "taskTitle": "Implement Data Export and Import Functionality (ST-112)",
+      "complexityScore": 5,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Divide this task into subtasks for implementing data export as JSON excluding API keys, creating import functionality with file parsing and validation, and providing user options for merge or overwrite with warnings.",
+      "reasoning": "Exporting and importing data involves handling JSON, user choices, and data integrity. The moderate complexity comes from ensuring secure exclusion of sensitive data and proper import handling, justifying subtasks for export, import, and user interaction."
+    }
+  ]
+}
