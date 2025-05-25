@@ -130,7 +130,8 @@ export default function PromptTimelineCard({
 
   // 计算整体状态
   const overallStatus =
-    entry.status === "pending"
+    entry.status === "pending" ||
+    entry.responses.some((r) => r.status === "streaming")
       ? "pending"
       : entry.responses.some((r) => r.status === "success")
       ? "success"
@@ -228,8 +229,27 @@ function ResponseItem({ response }: { response: PromptResponse }) {
         return (
           <div className="w-3 h-3 rounded-full bg-yellow-400 animate-pulse" />
         );
+      case "streaming":
+        return (
+          <div className="w-3 h-3 rounded-full bg-blue-400 animate-pulse" />
+        );
       default:
         return null;
+    }
+  };
+
+  const getStatusText = (status: string, isStreaming?: boolean) => {
+    switch (status) {
+      case "success":
+        return "完成";
+      case "error":
+        return "错误";
+      case "pending":
+        return "等待中";
+      case "streaming":
+        return isStreaming ? "流式生成中..." : "流式完成";
+      default:
+        return status;
     }
   };
 
@@ -258,6 +278,11 @@ function ResponseItem({ response }: { response: PromptResponse }) {
           <span className="text-xs text-muted-foreground">
             {response.model}
           </span>
+          {response.status === "streaming" && response.isStreaming && (
+            <span className="text-xs text-blue-600 animate-pulse">
+              正在生成...
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {response.duration && (
@@ -265,7 +290,8 @@ function ResponseItem({ response }: { response: PromptResponse }) {
               {formatDuration(response.duration)}
             </span>
           )}
-          {response.status === "success" && (
+          {(response.status === "success" ||
+            (response.status === "streaming" && response.response)) && (
             <Button
               variant="ghost"
               size="sm"
@@ -278,12 +304,24 @@ function ResponseItem({ response }: { response: PromptResponse }) {
         </div>
       </div>
 
+      {/* 成功状态：显示完整响应 */}
       {response.status === "success" && response.response && (
-        <div className="text-xs text-foreground line-clamp-3">
+        <div className="text-xs text-foreground whitespace-pre-wrap">
           {response.response}
         </div>
       )}
 
+      {/* 流式状态：显示当前累积的响应，带有实时更新效果 */}
+      {response.status === "streaming" && (
+        <div className="text-xs text-foreground whitespace-pre-wrap">
+          {response.response}
+          {response.isStreaming && (
+            <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-1" />
+          )}
+        </div>
+      )}
+
+      {/* 错误状态 */}
       {response.status === "error" && response.error && (
         <div className="text-xs space-y-1">
           <div className="text-red-600">错误: {response.error}</div>
@@ -305,8 +343,9 @@ function ResponseItem({ response }: { response: PromptResponse }) {
         </div>
       )}
 
+      {/* 等待状态 */}
       {response.status === "pending" && (
-        <div className="text-xs text-muted-foreground">正在生成响应...</div>
+        <div className="text-xs text-muted-foreground">正在准备请求...</div>
       )}
     </div>
   );

@@ -2,7 +2,11 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { toast } from "sonner";
 import { llmService } from "@/services/llm";
-import type { TextGenerationOptions, TextResponse } from "@/services/llm";
+import type {
+  TextGenerationOptions,
+  TextResponse,
+  StreamChunk,
+} from "@/services/llm";
 
 export interface PromptEntry {
   id: string;
@@ -20,10 +24,11 @@ export interface PromptResponse {
   providerId: string;
   model: string;
   response: string;
-  status: "pending" | "success" | "error";
+  status: "pending" | "success" | "error" | "streaming";
   timestamp: Date;
   duration?: number;
   error?: string;
+  isStreaming?: boolean;
 }
 
 interface PromptStore {
@@ -36,16 +41,27 @@ interface PromptStore {
     prompt: string;
     providers: string[];
     models: string[];
+    enableStreaming?: boolean;
   }) => Promise<void>;
 
   updateResponse: (
     responseId: string,
     updates: Partial<PromptResponse>
   ) => void;
+
+  appendStreamContent: (responseId: string, content: string) => void;
+
   clearHistory: () => void;
 
   // 工具函数
   getEntryById: (id: string) => PromptEntry | undefined;
+
+  // 处理流式响应的新方法
+  handleStreamResponse: (
+    stream: ReadableStream<StreamChunk>,
+    responseId: string,
+    startTime: number
+  ) => Promise<void>;
 }
 
 export const usePromptStore = create<PromptStore>()(
@@ -55,7 +71,7 @@ export const usePromptStore = create<PromptStore>()(
       isSubmitting: false,
 
       submitPrompt: async (data) => {
-        const { prompt, providers, models } = data;
+        const { prompt, providers, models, enableStreaming = true } = data;
 
         set({ isSubmitting: true });
 
@@ -89,8 +105,9 @@ export const usePromptStore = create<PromptStore>()(
               providerId,
               model: modelId,
               response: "",
-              status: "pending",
+              status: enableStreaming ? "streaming" : "pending",
               timestamp: new Date(),
+              isStreaming: enableStreaming,
             };
 
             // 添加到状态
@@ -109,7 +126,7 @@ export const usePromptStore = create<PromptStore>()(
                 model: modelId,
                 temperature: 0.7,
                 maxTokens: 2048,
-                stream: false,
+                stream: enableStreaming,
               };
 
               const result = await llmService.generateTextWithStoredKey(
@@ -118,21 +135,33 @@ export const usePromptStore = create<PromptStore>()(
                 options
               );
 
-              const duration = Date.now() - startTime;
-
               if (result.success && result.data) {
-                const textResponse = result.data as TextResponse;
+                if (enableStreaming && result.data instanceof ReadableStream) {
+                  // 处理流式响应
+                  await get().handleStreamResponse(
+                    result.data,
+                    responseId,
+                    startTime
+                  );
+                } else if (
+                  !enableStreaming &&
+                  typeof result.data === "object"
+                ) {
+                  // 处理常规响应
+                  const textResponse = result.data as TextResponse;
+                  const duration = Date.now() - startTime;
 
-                // 更新成功响应
-                const updates: Partial<PromptResponse> = {
-                  response: textResponse.content,
-                  status: "success",
-                  duration,
-                };
+                  const updates: Partial<PromptResponse> = {
+                    response: textResponse.content,
+                    status: "success",
+                    duration,
+                  };
 
-                get().updateResponse(responseId, updates);
+                  get().updateResponse(responseId, updates);
+                }
               } else {
                 // 处理错误
+                const duration = Date.now() - startTime;
                 const errorMessage = result.error?.message || "Unknown error";
 
                 const updates: Partial<PromptResponse> = {
@@ -221,6 +250,56 @@ export const usePromptStore = create<PromptStore>()(
         }
       },
 
+      // 处理流式响应的新方法
+      handleStreamResponse: async (
+        stream: ReadableStream<StreamChunk>,
+        responseId: string,
+        startTime: number
+      ) => {
+        const reader = stream.getReader();
+        let fullContent = "";
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+
+            if (done) {
+              break;
+            }
+
+            if (value.content) {
+              fullContent += value.content;
+              // 实时更新UI
+              get().appendStreamContent(responseId, value.content);
+            }
+
+            if (value.isComplete) {
+              // 流结束，更新最终状态
+              const duration = Date.now() - startTime;
+              get().updateResponse(responseId, {
+                status: "success",
+                duration,
+                isStreaming: false,
+              });
+              break;
+            }
+          }
+        } catch (error) {
+          const duration = Date.now() - startTime;
+          const errorMessage =
+            error instanceof Error ? error.message : "Stream error";
+
+          get().updateResponse(responseId, {
+            status: "error",
+            error: errorMessage,
+            duration,
+            isStreaming: false,
+          });
+        } finally {
+          reader.releaseLock();
+        }
+      },
+
       updateResponse: (responseId, updates) => {
         set((state) => {
           const updatedEntries = state.entries.map((entry) => ({
@@ -228,6 +307,20 @@ export const usePromptStore = create<PromptStore>()(
             responses: entry.responses.map((response) =>
               response.id === responseId
                 ? { ...response, ...updates }
+                : response
+            ),
+          }));
+          return { entries: updatedEntries };
+        });
+      },
+
+      appendStreamContent: (responseId, content) => {
+        set((state) => {
+          const updatedEntries = state.entries.map((entry) => ({
+            ...entry,
+            responses: entry.responses.map((response) =>
+              response.id === responseId
+                ? { ...response, response: response.response + content }
                 : response
             ),
           }));
