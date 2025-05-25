@@ -47,7 +47,9 @@ export interface ApiKey {
   providerName: string; // 提供商名称
   encryptedKey: string; // 加密后的 API 密钥
   iv: string; // 初始化向量
+  salt: string; // 加密盐值
   keyId: string; // 密钥标识符
+  name?: string; // 可选的密钥名称
   createdAt: Date;
   lastUsed?: Date;
 }
@@ -197,6 +199,10 @@ export const dbHelpers = {
 
   async getApiKey(providerName: string): Promise<ApiKey | undefined> {
     return await db.apiKeys.where("providerName").equals(providerName).first();
+  },
+
+  async getAllApiKeys(): Promise<ApiKey[]> {
+    return await db.apiKeys.orderBy("createdAt").reverse().toArray();
   },
 
   async deleteApiKey(providerName: string): Promise<void> {
