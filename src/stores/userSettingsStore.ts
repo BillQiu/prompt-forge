@@ -151,6 +151,41 @@ const initialState: UserSettingsState = {
       enabled: true,
       apiKeyStored: false,
       models: [
+        // Gemini 2.5 Series - Latest and most advanced
+        {
+          id: "gemini-2.5-flash-preview-05-20",
+          name: "Gemini 2.5 Flash Preview",
+          enabled: true,
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
+        },
+        {
+          id: "gemini-2.5-pro-preview-05-06",
+          name: "Gemini 2.5 Pro Preview",
+          enabled: true,
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
+        },
+        // Gemini 2.0 Series - Next generation features
+        {
+          id: "gemini-2.0-flash",
+          name: "Gemini 2.0 Flash",
+          enabled: true,
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
+        },
+        {
+          id: "gemini-2.0-flash-lite",
+          name: "Gemini 2.0 Flash-Lite",
+          enabled: true,
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
+        },
+        // Gemini 1.5 Series - Proven and reliable
         {
           id: "gemini-1.5-pro",
           name: "Gemini 1.5 Pro",
@@ -175,9 +210,19 @@ const initialState: UserSettingsState = {
           maxTokens: 4096,
           topP: 1,
         },
+        // Embedding Models
+        {
+          id: "text-embedding-004",
+          name: "Text Embedding 004",
+          enabled: false, // Specialized model, disabled by default
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
+        },
+        // Legacy Models
         {
           id: "gemini-pro",
-          name: "Gemini Pro",
+          name: "Gemini Pro (Legacy)",
           enabled: false, // Legacy model, disabled by default
           temperature: 0.7,
           maxTokens: 4096,
@@ -309,7 +354,7 @@ const initialState: UserSettingsState = {
   defaultProviders: ["openai", "google", "anthropic"],
   defaultModels: {
     openai: ["gpt-4o"],
-    google: ["gemini-1.5-flash"],
+    google: ["gemini-2.0-flash"],
     anthropic: ["claude-3-5-haiku-20241022"],
     ollama: ["llama3.2"],
   },
@@ -486,7 +531,18 @@ export const useUserSettingsStore = create<UserSettingsStore>()(
       }),
       {
         name: "user-settings-store",
-        version: 1,
+        version: 4,
+        migrate: (persistedState: any, version: number) => {
+          if (version < 4) {
+            // 版本4：更新Google Gemini模型列表，与GeminiAdapter.ts保持一致
+            return {
+              ...persistedState,
+              providers: initialState.providers,
+              defaultModels: initialState.defaultModels,
+            };
+          }
+          return persistedState;
+        },
       }
     ),
     {
