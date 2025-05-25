@@ -23,11 +23,62 @@ export class ClaudeAdapter implements BaseAdapter {
     "Anthropic's Claude AI models for text generation and reasoning";
 
   private readonly models: ModelInfo[] = [
+    // Claude 4 Series - Latest and most advanced
+    {
+      id: "claude-opus-4-20250514",
+      name: "Claude 4 Opus",
+      description:
+        "Our most powerful and intelligent model yet, world's best coding model with sustained performance on complex tasks",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 200000,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.015, // $15.00 per 1M tokens
+        outputCostPer1KTokens: 0.075, // $75.00 per 1M tokens
+      },
+    },
+    {
+      id: "claude-sonnet-4-20250514",
+      name: "Claude 4 Sonnet",
+      description:
+        "High-performance model with exceptional reasoning and coding capabilities, significant upgrade over 3.7",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 200000,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.003, // $3.00 per 1M tokens
+        outputCostPer1KTokens: 0.015, // $15.00 per 1M tokens
+      },
+    },
+    // Claude 3.7 Series - Extended thinking capabilities
+    {
+      id: "claude-3-7-sonnet-20250219",
+      name: "Claude 3.7 Sonnet",
+      description:
+        "High-performance model with extended thinking capabilities, enhanced reasoning",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 200000,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.003, // $3.00 per 1M tokens
+        outputCostPer1KTokens: 0.015, // $15.00 per 1M tokens
+      },
+    },
+    // Claude 3.5 Series - Current generation
     {
       id: "claude-3-5-sonnet-20241022",
       name: "Claude 3.5 Sonnet",
       description:
-        "Most intelligent model, excels at complex reasoning and coding",
+        "Most intelligent Claude 3 model, excels at complex reasoning and coding",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
@@ -42,7 +93,7 @@ export class ClaudeAdapter implements BaseAdapter {
     {
       id: "claude-3-5-haiku-20241022",
       name: "Claude 3.5 Haiku",
-      description: "Fastest model for everyday tasks",
+      description: "Fastest, most cost-effective model for everyday tasks",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
@@ -50,14 +101,16 @@ export class ClaudeAdapter implements BaseAdapter {
         contextLength: 200000,
       },
       pricing: {
-        inputCostPer1KTokens: 0.001, // $1.00 per 1M tokens
-        outputCostPer1KTokens: 0.005, // $5.00 per 1M tokens
+        inputCostPer1KTokens: 0.0008, // $0.80 per 1M tokens
+        outputCostPer1KTokens: 0.004, // $4.00 per 1M tokens
       },
     },
+    // Claude 3 Series - Legacy models for compatibility
     {
       id: "claude-3-opus-20240229",
-      name: "Claude 3 Opus",
-      description: "Most powerful model for highly complex tasks (legacy)",
+      name: "Claude 3 Opus (Legacy)",
+      description:
+        "Most powerful Claude 3 model for highly complex tasks (legacy)",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
@@ -71,7 +124,7 @@ export class ClaudeAdapter implements BaseAdapter {
     },
     {
       id: "claude-3-sonnet-20240229",
-      name: "Claude 3 Sonnet",
+      name: "Claude 3 Sonnet (Legacy)",
       description: "Balanced intelligence and speed (legacy)",
       capabilities: {
         textGeneration: true,
@@ -86,8 +139,8 @@ export class ClaudeAdapter implements BaseAdapter {
     },
     {
       id: "claude-3-haiku-20240307",
-      name: "Claude 3 Haiku",
-      description: "Fastest model for light tasks (legacy)",
+      name: "Claude 3 Haiku (Legacy)",
+      description: "Fastest Claude 3 model for light tasks (legacy)",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,

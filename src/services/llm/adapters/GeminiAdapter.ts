@@ -23,57 +23,143 @@ export class GeminiAdapter implements BaseAdapter {
     "Google's Gemini AI models for text generation and multimodal tasks";
 
   private readonly models: ModelInfo[] = [
+    // Gemini 2.5 Series - Latest and most advanced
     {
-      id: "gemini-1.5-pro",
-      name: "Gemini 1.5 Pro",
+      id: "gemini-2.5-flash-preview-05-20",
+      name: "Gemini 2.5 Flash Preview",
       description:
-        "Google's most capable model for complex, multi-step reasoning",
+        "Our best model in terms of price-performance, offering well-rounded capabilities with adaptive thinking",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
         streaming: true,
-        contextLength: 2000000, // 2M tokens
+        contextLength: 1048576, // 1M tokens
       },
       pricing: {
-        inputCostPer1KTokens: 0.00125, // $1.25 per 1M tokens
-        outputCostPer1KTokens: 0.005, // $5.00 per 1M tokens
+        inputCostPer1KTokens: 0.00015, // $0.15 per 1M tokens (text/image/video)
+        outputCostPer1KTokens: 0.0006, // $0.60 per 1M tokens (non-thinking)
       },
     },
     {
-      id: "gemini-1.5-flash",
-      name: "Gemini 1.5 Flash",
+      id: "gemini-2.5-pro-preview-05-06",
+      name: "Gemini 2.5 Pro Preview",
       description:
-        "Fast and versatile performance across a diverse variety of tasks",
+        "Our most powerful thinking model with maximum response accuracy and state-of-the-art performance",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
         streaming: true,
-        contextLength: 1000000, // 1M tokens
+        contextLength: 1048576, // 1M tokens
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.00125, // $1.25 per 1M tokens (<=200k)
+        outputCostPer1KTokens: 0.01, // $10.00 per 1M tokens (<=200k)
+      },
+    },
+    // Gemini 2.0 Series - Next generation features
+    {
+      id: "gemini-2.0-flash",
+      name: "Gemini 2.0 Flash",
+      description:
+        "Newest multimodal model with next generation features and improved capabilities, built for agentic experiences",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 1048576, // 1M tokens
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.0001, // $0.10 per 1M tokens (text/image/video)
+        outputCostPer1KTokens: 0.0004, // $0.40 per 1M tokens
+      },
+    },
+    {
+      id: "gemini-2.0-flash-lite",
+      name: "Gemini 2.0 Flash-Lite",
+      description:
+        "Cost efficient and low latency model for high-frequency tasks",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 1048576, // 1M tokens
       },
       pricing: {
         inputCostPer1KTokens: 0.000075, // $0.075 per 1M tokens
         outputCostPer1KTokens: 0.0003, // $0.30 per 1M tokens
       },
     },
+    // Gemini 1.5 Series - Proven and reliable
     {
-      id: "gemini-1.5-flash-8b",
-      name: "Gemini 1.5 Flash-8B",
-      description: "High volume and lower intelligence tasks at very low cost",
+      id: "gemini-1.5-pro",
+      name: "Gemini 1.5 Pro",
+      description:
+        "Mid-size multimodal model optimized for complex reasoning tasks with 2M token context",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
         streaming: true,
-        contextLength: 1000000, // 1M tokens
+        contextLength: 2097152, // 2M tokens
       },
       pricing: {
-        inputCostPer1KTokens: 0.0000375, // $0.0375 per 1M tokens
-        outputCostPer1KTokens: 0.00015, // $0.15 per 1M tokens
+        inputCostPer1KTokens: 0.00125, // $1.25 per 1M tokens (<=128k)
+        outputCostPer1KTokens: 0.005, // $5.00 per 1M tokens (<=128k)
       },
     },
     {
+      id: "gemini-1.5-flash",
+      name: "Gemini 1.5 Flash",
+      description:
+        "Fast and versatile multimodal model for scaling across diverse tasks",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 1048576, // 1M tokens
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.000075, // $0.075 per 1M tokens (<=128k)
+        outputCostPer1KTokens: 0.0003, // $0.30 per 1M tokens (<=128k)
+      },
+    },
+    {
+      id: "gemini-1.5-flash-8b",
+      name: "Gemini 1.5 Flash-8B",
+      description:
+        "Small model designed for lower intelligence tasks at very low cost",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 1048576, // 1M tokens
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.0000375, // $0.0375 per 1M tokens (<=128k)
+        outputCostPer1KTokens: 0.00015, // $0.15 per 1M tokens (<=128k)
+      },
+    },
+    // Embedding Models
+    {
+      id: "text-embedding-004",
+      name: "Text Embedding 004",
+      description:
+        "State-of-the-art text embedding model for measuring text relatedness",
+      capabilities: {
+        textGeneration: false,
+        imageGeneration: false,
+        streaming: false,
+        contextLength: 2048,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0, // Free in Gemini API
+        outputCostPer1KTokens: 0,
+      },
+    },
+    // Legacy Models (for compatibility)
+    {
       id: "gemini-pro",
-      name: "Gemini Pro",
-      description: "Best performance for most tasks (legacy)",
+      name: "Gemini Pro (Legacy)",
+      description: "Legacy model - consider upgrading to newer versions",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
