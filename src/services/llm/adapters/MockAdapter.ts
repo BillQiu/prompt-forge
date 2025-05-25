@@ -1,5 +1,4 @@
 import {
-  BaseAdapter,
   TextGenerationOptions,
   ImageGenerationOptions,
   TextResponse,
@@ -9,113 +8,138 @@ import {
   LLMAdapterError,
   AdapterFactory,
 } from "../BaseAdapter";
+import { AbstractAdapter, StreamHandler } from "./AbstractAdapter";
+import { AdapterRegistry } from "./AdapterRegistry";
 
 /**
- * Mock 适配器，用于测试和开发目的
- * 模拟真实 LLM 提供者的行为
+ * Mock 适配器配置选项
  */
-export class MockAdapter implements BaseAdapter {
+export interface MockAdapterConfig {
+  /** 模拟延迟（毫秒） */
+  delay?: number;
+  /** 是否模拟错误 */
+  simulateError?: boolean;
+  /** 错误类型 */
+  errorType?: "network" | "auth" | "rate_limit" | "server_error";
+  /** 自定义响应内容 */
+  customResponse?: string;
+  /** 是否启用详细日志 */
+  verbose?: boolean;
+}
+
+/**
+ * Mock 适配器，用于测试和开发
+ * 支持可配置的模拟行为
+ */
+export class MockAdapter extends AbstractAdapter {
   readonly providerId = "mock";
   readonly providerName = "Mock Provider";
-  readonly description = "Mock adapter for testing and development purposes";
+  readonly description = "Mock adapter for testing and development";
 
-  private readonly models: ModelInfo[] = [
+  private static readonly MODELS: ModelInfo[] = [
     {
-      id: "mock-text-basic",
-      name: "Mock Text Basic",
-      description: "Basic text generation model for testing",
+      id: "mock-gpt-4",
+      name: "Mock GPT-4",
+      description: "Mock version of GPT-4 for testing",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
         streaming: true,
-        contextLength: 4096,
-      },
-      pricing: {
-        inputCostPer1KTokens: 0.001,
-        outputCostPer1KTokens: 0.002,
-      },
-    },
-    {
-      id: "mock-text-advanced",
-      name: "Mock Text Advanced",
-      description: "Advanced text generation model for testing",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: false,
-        streaming: true,
-        contextLength: 8192,
-      },
-      pricing: {
-        inputCostPer1KTokens: 0.003,
-        outputCostPer1KTokens: 0.006,
-      },
-    },
-    {
-      id: "mock-image-basic",
-      name: "Mock Image Basic",
-      description: "Basic image generation model for testing",
-      capabilities: {
-        textGeneration: false,
-        imageGeneration: true,
-        streaming: false,
-      },
-      pricing: {
-        inputCostPer1KTokens: 0.02,
-        outputCostPer1KTokens: 0.02,
-      },
-    },
-    {
-      id: "mock-multimodal",
-      name: "Mock Multimodal",
-      description: "Multimodal model supporting both text and image generation",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: true,
-        streaming: true,
-        contextLength: 16384,
+        contextLength: 128000,
       },
       pricing: {
         inputCostPer1KTokens: 0.01,
         outputCostPer1KTokens: 0.03,
       },
     },
+    {
+      id: "mock-claude-3",
+      name: "Mock Claude 3",
+      description: "Mock version of Claude 3 for testing",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 200000,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.003,
+        outputCostPer1KTokens: 0.015,
+      },
+    },
+    {
+      id: "mock-dall-e-3",
+      name: "Mock DALL-E 3",
+      description: "Mock version of DALL-E 3 for testing",
+      capabilities: {
+        textGeneration: false,
+        imageGeneration: true,
+        streaming: false,
+        contextLength: 4000,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.04,
+        outputCostPer1KTokens: 0.04,
+      },
+    },
+    {
+      id: "mock-fast-model",
+      name: "Mock Fast Model",
+      description: "Fast mock model for testing",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 8000,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.001,
+        outputCostPer1KTokens: 0.002,
+      },
+    },
   ];
 
-  // 可配置的响应行为
-  private config = {
-    simulateDelay: true,
-    minDelay: 100,
-    maxDelay: 500,
-    streamChunkSize: 10,
-    errorRate: 0, // 0-1 之间，模拟错误率
-    customResponses: new Map<string, string>(),
-  };
+  private config: MockAdapterConfig;
 
-  /**
-   * 配置 Mock 适配器的行为
-   */
-  configure(options: {
-    simulateDelay?: boolean;
-    minDelay?: number;
-    maxDelay?: number;
-    streamChunkSize?: number;
-    errorRate?: number;
-    customResponses?: Map<string, string>;
-  }) {
-    Object.assign(this.config, options);
+  constructor(config: MockAdapterConfig = {}) {
+    super(MockAdapter.MODELS);
+    this.config = {
+      delay: 100,
+      simulateError: false,
+      errorType: "network",
+      customResponse: "",
+      verbose: false,
+      ...config,
+    };
   }
 
-  getSupportedModels(): ModelInfo[] {
-    return [...this.models];
+  /**
+   * 更新Mock配置
+   */
+  updateConfig(config: Partial<MockAdapterConfig>): void {
+    this.config = { ...this.config, ...config };
+    if (this.config.verbose) {
+      console.log("MockAdapter配置更新:", this.config);
+    }
+  }
+
+  /**
+   * 获取当前配置
+   */
+  getConfig(): MockAdapterConfig {
+    return { ...this.config };
   }
 
   async validateApiKey(apiKey: string): Promise<boolean> {
-    // 模拟 API 密钥验证
+    // 模拟验证延迟
     await this.simulateDelay();
 
-    // 为了测试，我们接受任何非空字符串作为有效密钥
-    // 特殊值 'invalid' 用于测试无效密钥
-    return apiKey.length > 0 && apiKey !== "invalid";
+    if (this.config.simulateError && this.config.errorType === "auth") {
+      return false;
+    }
+
+    // Mock适配器接受任何非空字符串作为有效API密钥
+    return typeof apiKey === "string" && apiKey.length > 0;
   }
 
   async generateText(
@@ -123,42 +147,50 @@ export class MockAdapter implements BaseAdapter {
     options: TextGenerationOptions,
     apiKey: string
   ): Promise<TextResponse | ReadableStream<StreamChunk>> {
-    // 验证 API 密钥
-    if (!(await this.validateApiKey(apiKey))) {
-      throw new LLMAdapterError("Invalid API key", "INVALID_API_KEY", 401);
-    }
+    try {
+      // 使用基类验证
+      this.validateApiKeyPresent(apiKey);
+      this.validateTextGenerationCapability(options.model);
 
-    // 检查模型是否支持文本生成
-    if (!this.supportsCapability(options.model, "textGeneration")) {
-      throw new LLMAdapterError(
-        `Model ${options.model} does not support text generation`,
-        "UNSUPPORTED_OPERATION"
-      );
-    }
+      // 模拟错误
+      if (this.config.simulateError) {
+        await this.simulateDelay();
+        throw this.createMockError();
+      }
 
-    // 模拟错误率
-    if (Math.random() < this.config.errorRate) {
-      throw new LLMAdapterError("Simulated API error", "API_ERROR", 500);
-    }
-
-    const mockResponse = this.generateMockTextResponse(prompt, options);
-
-    if (options.stream) {
-      return this.createTextStream(mockResponse, options);
-    } else {
-      await this.simulateDelay();
-      return {
-        content: mockResponse,
-        metadata: {
+      // 日志记录
+      if (this.config.verbose) {
+        console.log("MockAdapter generateText:", {
+          prompt: prompt.slice(0, 100) + (prompt.length > 100 ? "..." : ""),
           model: options.model,
-          usage: {
-            promptTokens: Math.floor(prompt.length / 4),
-            completionTokens: Math.floor(mockResponse.length / 4),
-            totalTokens: Math.floor((prompt.length + mockResponse.length) / 4),
+          stream: options.stream,
+        });
+      }
+
+      // 生成mock响应
+      const mockContent = this.generateMockContent(prompt, options);
+
+      if (options.stream) {
+        return this.createMockStream(mockContent, options.model);
+      } else {
+        // 模拟延迟
+        await this.simulateDelay();
+
+        return {
+          content: mockContent,
+          metadata: {
+            model: options.model,
+            usage: {
+              promptTokens: this.estimateTokens(prompt),
+              completionTokens: this.estimateTokens(mockContent),
+              totalTokens: this.estimateTokens(prompt + mockContent),
+            },
+            finishReason: "stop",
           },
-          finishReason: "stop",
-        },
-      };
+        };
+      }
+    } catch (error) {
+      throw this.handleError(error);
     }
   }
 
@@ -167,159 +199,219 @@ export class MockAdapter implements BaseAdapter {
     options: ImageGenerationOptions,
     apiKey: string
   ): Promise<ImageResponse[]> {
-    // 验证 API 密钥
-    if (!(await this.validateApiKey(apiKey))) {
-      throw new LLMAdapterError("Invalid API key", "INVALID_API_KEY", 401);
-    }
+    try {
+      // 使用基类验证
+      this.validateApiKeyPresent(apiKey);
+      this.validateImageGenerationCapability(options.model);
 
-    // 检查模型是否支持图像生成
-    if (!this.supportsCapability(options.model, "imageGeneration")) {
-      throw new LLMAdapterError(
-        `Model ${options.model} does not support image generation`,
-        "UNSUPPORTED_OPERATION"
-      );
-    }
+      // 模拟错误
+      if (this.config.simulateError) {
+        await this.simulateDelay();
+        throw this.createMockError();
+      }
 
-    // 模拟错误率
-    if (Math.random() < this.config.errorRate) {
-      throw new LLMAdapterError("Simulated API error", "API_ERROR", 500);
-    }
-
-    await this.simulateDelay();
-
-    const numImages = options.numImages || 1;
-    const images: ImageResponse[] = [];
-
-    for (let i = 0; i < numImages; i++) {
-      images.push({
-        url: `https://picsum.photos/512/512?random=${Date.now()}-${i}`,
-        metadata: {
+      // 日志记录
+      if (this.config.verbose) {
+        console.log("MockAdapter generateImage:", {
+          prompt: prompt.slice(0, 100) + (prompt.length > 100 ? "..." : ""),
           model: options.model,
-          revisedPrompt: `${prompt} (mock generated image ${i + 1})`,
-          size: options.size || "512x512",
-          quality: options.quality || "standard",
-          style: options.style || "vivid",
-        },
-      });
+        });
+      }
+
+      // 模拟延迟
+      await this.simulateDelay(this.config.delay! * 3); // 图像生成通常更慢
+
+      // 生成mock图像响应
+      const mockImages: ImageResponse[] = Array.from(
+        { length: options.n || 1 },
+        (_, i) => ({
+          url: `https://via.placeholder.com/1024x1024/0066cc/ffffff?text=Mock+Image+${
+            i + 1
+          }`,
+          metadata: {
+            model: options.model,
+            size: options.size || "1024x1024",
+            prompt: prompt,
+            finishReason: "stop",
+          },
+        })
+      );
+
+      return mockImages;
+    } catch (error) {
+      throw this.handleError(error);
     }
-
-    return images;
   }
 
-  supportsCapability(
-    modelId: string,
-    capability: "textGeneration" | "imageGeneration" | "streaming"
-  ): boolean {
-    const model = this.models.find((m) => m.id === modelId);
-    if (!model) return false;
-
-    return model.capabilities[capability] || false;
+  /**
+   * 重置为默认配置
+   */
+  reset(): void {
+    this.config = {
+      delay: 100,
+      simulateError: false,
+      errorType: "network",
+      customResponse: "",
+      verbose: false,
+    };
   }
 
-  getContextLength(modelId: string): number | undefined {
-    const model = this.models.find((m) => m.id === modelId);
-    return model?.capabilities.contextLength;
+  /**
+   * 设置为快速模式（无延迟，无错误）
+   */
+  setFastMode(): void {
+    this.config = {
+      ...this.config,
+      delay: 0,
+      simulateError: false,
+      verbose: false,
+    };
   }
 
-  getPricing(
-    modelId: string
-  ):
-    | { inputCostPer1KTokens?: number; outputCostPer1KTokens?: number }
-    | undefined {
-    const model = this.models.find((m) => m.id === modelId);
-    return model?.pricing;
+  /**
+   * 设置错误模拟
+   */
+  setErrorMode(errorType: MockAdapterConfig["errorType"] = "network"): void {
+    this.config = {
+      ...this.config,
+      simulateError: true,
+      errorType,
+    };
   }
 
-  private generateMockTextResponse(
+  // === 私有辅助方法 ===
+
+  /**
+   * 模拟延迟
+   */
+  private async simulateDelay(delay?: number): Promise<void> {
+    const actualDelay = delay ?? this.config.delay ?? 100;
+    if (actualDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, actualDelay));
+    }
+  }
+
+  /**
+   * 生成Mock内容
+   */
+  private generateMockContent(
     prompt: string,
     options: TextGenerationOptions
   ): string {
-    // 检查是否有自定义响应
-    const customResponse = this.config.customResponses.get(prompt);
-    if (customResponse) {
-      return customResponse;
+    if (this.config.customResponse) {
+      return this.config.customResponse;
     }
 
-    // 生成基于提示的模拟响应
-    const responses = [
-      `这是对提示 "${prompt}" 的模拟响应。`,
-      `Mock response for: "${prompt}". This is generated by the mock adapter.`,
-      `根据您的提示 "${prompt}"，这里是一个模拟的 AI 响应。模型：${options.model}`,
-      `Mock AI response: I understand you asked about "${prompt}". Here's a simulated answer.`,
-      `模拟响应：您的问题是 "${prompt}"，这是一个由 Mock 适配器生成的测试响应。`,
-    ];
+    // 基于模型生成不同风格的响应
+    const modelId = options.model;
 
-    let response = responses[Math.floor(Math.random() * responses.length)];
+    if (modelId.includes("gpt")) {
+      return `This is a mock GPT response to: "${prompt.slice(0, 50)}..." 
 
-    // 根据温度参数调整响应长度
-    if (options.temperature && options.temperature > 0.7) {
-      response +=
-        " 这是一个较长的响应，因为温度参数较高，模拟了更有创意的输出。";
+Generated by ${modelId} with the following parameters:
+- Temperature: ${options.temperature || 0.7}
+- Max tokens: ${options.maxTokens || 2048}
+- System prompt: ${options.systemPrompt ? "Yes" : "No"}
+- Context: ${options.context ? "Yes" : "No"}
+
+This is a simulated response for testing purposes. In a real implementation, this would be generated by the actual AI model.`;
     }
 
-    // 根据 maxTokens 截断响应
-    if (options.maxTokens) {
-      const maxLength = options.maxTokens * 4; // 粗略估算
-      if (response.length > maxLength) {
-        response = response.substring(0, maxLength - 3) + "...";
-      }
+    if (modelId.includes("claude")) {
+      return `Hello! I'm Claude (mock version). I understand you're asking about: "${prompt.slice(
+        0,
+        50
+      )}..."
+
+I'm here to help with thoughtful, helpful responses. This is a mock response generated for testing purposes, but in real usage, I would provide detailed, nuanced answers based on my training.
+
+Model: ${modelId}
+Parameters used: Temperature ${options.temperature || 0.7}, Max tokens ${
+        options.maxTokens || 2048
+      }`;
     }
 
-    return response;
+    // 默认响应
+    return `Mock AI Response: "${prompt.slice(0, 50)}..."
+
+This is a simulated response from ${modelId}. The response is generated based on your prompt and the model's capabilities. 
+
+Timestamp: ${new Date().toISOString()}
+Configuration: ${JSON.stringify(this.config, null, 2)}`;
   }
 
-  private createTextStream(
+  /**
+   * 创建Mock流
+   */
+  private createMockStream(
     content: string,
-    options: TextGenerationOptions
+    model: string
   ): ReadableStream<StreamChunk> {
-    const chunkSize = this.config.streamChunkSize;
-    let index = 0;
+    const chunks = content.split(" ");
+    let chunkIndex = 0;
 
-    return new ReadableStream<StreamChunk>({
-      async start(controller) {
-        const sendChunk = async () => {
-          if (index >= content.length) {
-            // 发送完成标记
-            controller.enqueue({
-              content: "",
-              isComplete: true,
-              metadata: {
-                model: options.model,
-                finishReason: "stop",
-              },
-            });
-            controller.close();
-            return;
-          }
-
-          const chunk = content.slice(index, index + chunkSize);
-          index += chunkSize;
-
-          controller.enqueue({
-            content: chunk,
-            isComplete: false,
-            metadata: {
-              model: options.model,
-            },
-          });
-
-          // 模拟流式响应的延迟
-          await new Promise((resolve) => setTimeout(resolve, 50));
-          sendChunk();
-        };
-
-        await sendChunk();
-      },
-    });
+    return StreamHandler.createTextStream(
+      (async function* () {
+        for (const chunk of chunks) {
+          // 模拟流延迟
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          yield chunk + " ";
+          chunkIndex++;
+        }
+      })(),
+      model,
+      Promise.resolve({
+        promptTokens: Math.floor(Math.random() * 100) + 50,
+        completionTokens: chunks.length,
+        totalTokens: Math.floor(Math.random() * 100) + 50 + chunks.length,
+      }),
+      Promise.resolve("stop"),
+      (error) => this.handleError(error)
+    );
   }
 
-  private async simulateDelay(): Promise<void> {
-    if (!this.config.simulateDelay) return;
+  /**
+   * 估算token数量
+   */
+  private estimateTokens(text: string): number {
+    // 简单估算：约4个字符 = 1个token
+    return Math.ceil(text.length / 4);
+  }
 
-    const delay =
-      Math.random() * (this.config.maxDelay - this.config.minDelay) +
-      this.config.minDelay;
-    await new Promise((resolve) => setTimeout(resolve, delay));
+  /**
+   * 创建Mock错误
+   */
+  private createMockError(): LLMAdapterError {
+    const errorType = this.config.errorType!;
+
+    switch (errorType) {
+      case "network":
+        return new LLMAdapterError(
+          "Mock network error: Unable to connect to service",
+          "NETWORK_ERROR",
+          0
+        );
+      case "auth":
+        return new LLMAdapterError(
+          "Mock authentication error: Invalid API key",
+          "INVALID_API_KEY",
+          401
+        );
+      case "rate_limit":
+        return new LLMAdapterError(
+          "Mock rate limit error: Too many requests",
+          "RATE_LIMIT_EXCEEDED",
+          429
+        );
+      case "server_error":
+        return new LLMAdapterError(
+          "Mock server error: Internal server error",
+          "SERVICE_UNAVAILABLE",
+          500
+        );
+      default:
+        return new LLMAdapterError("Mock unknown error", "UNKNOWN_ERROR", 500);
+    }
   }
 }
 
@@ -327,15 +419,33 @@ export class MockAdapter implements BaseAdapter {
  * Mock 适配器工厂
  */
 export class MockAdapterFactory implements AdapterFactory {
-  createAdapter(): BaseAdapter {
-    return new MockAdapter();
+  private config: MockAdapterConfig;
+
+  constructor(config: MockAdapterConfig = {}) {
+    this.config = config;
+  }
+
+  createAdapter(): MockAdapter {
+    return new MockAdapter(this.config);
   }
 
   getProviderInfo() {
     return {
       id: "mock",
       name: "Mock Provider",
-      description: "Mock adapter for testing and development purposes",
+      description:
+        "Mock adapter for testing and development with configurable behavior",
     };
   }
+
+  /**
+   * 更新工厂配置
+   */
+  updateConfig(config: Partial<MockAdapterConfig>): void {
+    this.config = { ...this.config, ...config };
+  }
 }
+
+// 自动注册适配器
+const registry = AdapterRegistry.getInstance();
+registry.register("mock", new MockAdapterFactory());

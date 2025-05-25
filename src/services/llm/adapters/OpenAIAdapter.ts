@@ -1,7 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, streamText, LanguageModel } from "ai";
 import {
-  BaseAdapter,
   TextGenerationOptions,
   ImageGenerationOptions,
   TextResponse,
@@ -11,19 +10,21 @@ import {
   LLMAdapterError,
   AdapterFactory,
 } from "../BaseAdapter";
+import { AbstractAdapter, StreamHandler } from "./AbstractAdapter";
+import { AdapterRegistry } from "./AdapterRegistry";
 
 /**
  * OpenAI 适配器，用于与 OpenAI API 交互
  * 支持最新的 GPT-4.1 系列、o3/o4-mini 推理模型和图像生成
  * 使用 AI SDK 统一接口
  */
-export class OpenAIAdapter implements BaseAdapter {
+export class OpenAIAdapter extends AbstractAdapter {
   readonly providerId = "openai";
   readonly providerName = "OpenAI";
   readonly description =
     "OpenAI GPT-4.1, o3/o4-mini reasoning models, and image generation";
 
-  private readonly models: ModelInfo[] = [
+  private static readonly MODELS: ModelInfo[] = [
     // GPT-4.1 系列 - 最新模型
     {
       id: "gpt-4.1",
@@ -198,8 +199,8 @@ export class OpenAIAdapter implements BaseAdapter {
     },
   ];
 
-  getSupportedModels(): ModelInfo[] {
-    return [...this.models];
+  constructor() {
+    super(OpenAIAdapter.MODELS);
   }
 
   /**
@@ -241,49 +242,18 @@ export class OpenAIAdapter implements BaseAdapter {
     apiKey: string
   ): Promise<TextResponse | ReadableStream<StreamChunk>> {
     try {
-      // 验证 API 密钥
-      if (!apiKey) {
-        throw new LLMAdapterError(
-          "API key is required",
-          "MISSING_API_KEY",
-          401
-        );
-      }
-
-      // 检查模型是否支持文本生成
-      if (!this.supportsCapability(options.model, "textGeneration")) {
-        throw new LLMAdapterError(
-          `Model ${options.model} does not support text generation`,
-          "UNSUPPORTED_OPERATION"
-        );
-      }
+      // 使用基类提供的验证方法
+      this.validateApiKeyPresent(apiKey);
+      this.validateTextGenerationCapability(options.model);
 
       const model = this.getLanguageModel(options.model, apiKey);
 
-      // 构建消息
-      let messages: Array<{
-        role: "system" | "user" | "assistant";
-        content: string;
-      }> = [];
-
-      if (options.systemPrompt) {
-        messages.push({
-          role: "system",
-          content: options.systemPrompt,
-        });
-      }
-
-      if (options.context) {
-        messages.push({
-          role: "user",
-          content: options.context,
-        });
-      }
-
-      messages.push({
-        role: "user",
-        content: prompt,
-      });
+      // 使用标准化消息构建器
+      const messages = this.createMessageBuilder()
+        .addSystemPrompt(options.systemPrompt || "")
+        .addContext(options.context || "")
+        .addUserMessage(prompt)
+        .build();
 
       const generateOptions = {
         model: model,
@@ -293,51 +263,18 @@ export class OpenAIAdapter implements BaseAdapter {
       };
 
       if (options.stream) {
-        // 返回流式响应
+        // 使用标准化流处理器
         const { textStream, usage } = streamText(generateOptions);
 
-        return new ReadableStream<StreamChunk>({
-          start: async (controller) => {
-            try {
-              let fullContent = "";
-
-              for await (const delta of textStream) {
-                fullContent += delta;
-                controller.enqueue({
-                  content: delta,
-                  isComplete: false,
-                  metadata: {
-                    model: options.model,
-                  },
-                });
-              }
-
-              // 流结束时发送完成信号
-              const finalUsage = await usage;
-              controller.enqueue({
-                content: "",
-                isComplete: true,
-                metadata: {
-                  model: options.model,
-                  finishReason: "stop",
-                  usage: finalUsage
-                    ? {
-                        promptTokens: finalUsage.promptTokens,
-                        completionTokens: finalUsage.completionTokens,
-                        totalTokens: finalUsage.totalTokens,
-                      }
-                    : undefined,
-                },
-              });
-              controller.close();
-            } catch (error) {
-              const llmError = this.handleAISDKError(error);
-              controller.error(llmError);
-            }
-          },
-        });
+        return StreamHandler.createTextStream(
+          textStream,
+          options.model,
+          usage || Promise.resolve(undefined),
+          Promise.resolve("stop"),
+          (error) => this.handleError(error)
+        );
       } else {
-        // 返回完整响应
+        // 非流式生成
         const { text, usage, finishReason } = await generateText(
           generateOptions
         );
@@ -358,7 +295,7 @@ export class OpenAIAdapter implements BaseAdapter {
         };
       }
     } catch (error) {
-      throw this.handleAISDKError(error);
+      throw this.handleError(error);
     }
   }
 
@@ -368,22 +305,9 @@ export class OpenAIAdapter implements BaseAdapter {
     apiKey: string
   ): Promise<ImageResponse[]> {
     try {
-      // 验证 API 密钥
-      if (!apiKey) {
-        throw new LLMAdapterError(
-          "API key is required",
-          "MISSING_API_KEY",
-          401
-        );
-      }
-
-      // 检查模型是否支持图像生成
-      if (!this.supportsCapability(options.model, "imageGeneration")) {
-        throw new LLMAdapterError(
-          `Model ${options.model} does not support image generation`,
-          "UNSUPPORTED_OPERATION"
-        );
-      }
+      // 使用基类提供的验证方法
+      this.validateApiKeyPresent(apiKey);
+      this.validateImageGenerationCapability(options.model);
 
       // AI SDK 目前不直接支持图像生成，我们需要使用原生OpenAI客户端
       // 这里暂时抛出错误，表示需要在未来版本中实现
@@ -392,155 +316,21 @@ export class OpenAIAdapter implements BaseAdapter {
         "NOT_IMPLEMENTED"
       );
     } catch (error) {
-      throw this.handleAISDKError(error);
+      throw this.handleError(error);
     }
   }
 
+  // 重写父类方法以暂时禁用图像生成功能
   supportsCapability(
     modelId: string,
     capability: "textGeneration" | "imageGeneration" | "streaming"
   ): boolean {
-    const model = this.models.find((m) => m.id === modelId);
-    if (!model) {
-      return false;
-    }
-
     // 暂时禁用图像生成，因为AI SDK不直接支持
     if (capability === "imageGeneration") {
       return false;
     }
 
-    return model.capabilities[capability] || false;
-  }
-
-  getContextLength(modelId: string): number | undefined {
-    const model = this.models.find((m) => m.id === modelId);
-    return model?.capabilities.contextLength;
-  }
-
-  getPricing(
-    modelId: string
-  ):
-    | { inputCostPer1KTokens?: number; outputCostPer1KTokens?: number }
-    | undefined {
-    const model = this.models.find((m) => m.id === modelId);
-    return model?.pricing;
-  }
-
-  /**
-   * 处理 AI SDK 错误，提供用户友好的错误消息
-   */
-  private handleAISDKError(error: any): LLMAdapterError {
-    if (error instanceof LLMAdapterError) {
-      return error;
-    }
-
-    // AI SDK 错误处理
-    if (error?.name === "AI_APICallError") {
-      const { message, statusCode } = error;
-
-      switch (statusCode) {
-        case 401:
-          return new LLMAdapterError(
-            "API密钥无效或认证失败。请检查您的OpenAI API密钥是否正确。",
-            "INVALID_API_KEY",
-            401,
-            error
-          );
-        case 403:
-          return new LLMAdapterError(
-            "访问被拒绝。您的API密钥可能没有权限访问此资源。",
-            "PERMISSION_DENIED",
-            403,
-            error
-          );
-        case 404:
-          return new LLMAdapterError(
-            "请求的模型或资源不存在。请检查模型名称是否正确。",
-            "NOT_FOUND",
-            404,
-            error
-          );
-        case 429:
-          return new LLMAdapterError(
-            "请求频率超出限制。请稍后再试或检查您的使用配额。",
-            "RATE_LIMIT",
-            429,
-            error
-          );
-        case 500:
-        case 502:
-        case 503:
-          return new LLMAdapterError(
-            "OpenAI服务暂时不可用。请稍后重试。",
-            "SERVICE_UNAVAILABLE",
-            statusCode,
-            error
-          );
-        case 400:
-          return new LLMAdapterError(
-            "请求参数无效。请检查您的输入内容。",
-            "BAD_REQUEST",
-            400,
-            error
-          );
-        default:
-          return new LLMAdapterError(
-            message || "API调用失败，请稍后重试。",
-            "API_ERROR",
-            statusCode || 500,
-            error
-          );
-      }
-    }
-
-    // AI SDK 解析错误
-    if (error?.name === "AI_ParseError") {
-      return new LLMAdapterError(
-        "解析响应时出错。服务器返回的数据格式可能有问题。",
-        "PARSE_ERROR",
-        500,
-        error
-      );
-    }
-
-    // 网络错误
-    if (error?.code === "ENOTFOUND" || error?.code === "ECONNREFUSED") {
-      return new LLMAdapterError(
-        "网络连接失败。请检查您的网络连接或代理设置。",
-        "NETWORK_ERROR",
-        0,
-        error
-      );
-    }
-
-    // 超时错误
-    if (error?.code === "ETIMEDOUT" || error?.name === "TimeoutError") {
-      return new LLMAdapterError(
-        "请求超时。服务器响应时间过长，请稍后重试。",
-        "TIMEOUT_ERROR",
-        408,
-        error
-      );
-    }
-
-    // 内容安全错误
-    if (error?.message?.includes("content_policy")) {
-      return new LLMAdapterError(
-        "内容被安全策略拒绝。请修改您的提示词内容。",
-        "CONTENT_POLICY_VIOLATION",
-        400,
-        error
-      );
-    }
-
-    // 通用错误
-    return new LLMAdapterError(
-      error?.message || "发生未知错误，请稍后重试。",
-      "UNKNOWN_ERROR",
-      500,
-      error
-    );
+    return super.supportsCapability(modelId, capability);
   }
 }
 
@@ -548,7 +338,7 @@ export class OpenAIAdapter implements BaseAdapter {
  * OpenAI 适配器工厂
  */
 export class OpenAIAdapterFactory implements AdapterFactory {
-  createAdapter(): BaseAdapter {
+  createAdapter(): OpenAIAdapter {
     return new OpenAIAdapter();
   }
 
@@ -561,3 +351,7 @@ export class OpenAIAdapterFactory implements AdapterFactory {
     };
   }
 }
+
+// 自动注册适配器
+const registry = AdapterRegistry.getInstance();
+registry.register("openai", new OpenAIAdapterFactory());

@@ -1,7 +1,6 @@
 import { createOllama } from "ollama-ai-provider";
 import { generateText, streamText, LanguageModel } from "ai";
 import {
-  BaseAdapter,
   TextGenerationOptions,
   ImageGenerationOptions,
   TextResponse,
@@ -11,90 +10,86 @@ import {
   LLMAdapterError,
   AdapterFactory,
 } from "../BaseAdapter";
+import { AbstractAdapter, StreamHandler } from "./AbstractAdapter";
+import { AdapterRegistry } from "./AdapterRegistry";
 
 /**
- * Ollama 适配器，用于与本地 Ollama 服务器交互
- * 使用 ollama-ai-provider
+ * Ollama 适配器配置
  */
-export class OllamaAdapter implements BaseAdapter {
+export interface OllamaAdapterConfig {
+  /** Ollama 服务器基础URL */
+  baseURL?: string;
+  /** 是否启用模型自动发现 */
+  enableModelDiscovery?: boolean;
+  /** 模型刷新间隔（秒） */
+  modelRefreshInterval?: number;
+  /** 是否启用详细日志 */
+  verbose?: boolean;
+}
+
+/**
+ * Ollama 适配器，用于与本地 Ollama 服务交互
+ * 支持动态模型发现和管理
+ * 使用 AI SDK 统一接口
+ */
+export class OllamaAdapter extends AbstractAdapter {
   readonly providerId = "ollama";
   readonly providerName = "Ollama";
-  readonly description = "Local AI models running on Ollama server";
+  readonly description = "Local Ollama models for text generation and chat";
 
-  private baseURL: string = "http://localhost:11434/api";
-  private availableModels: ModelInfo[] = [];
+  private config: OllamaAdapterConfig;
+  private dynamicModels: ModelInfo[] = [];
+  private lastModelRefresh: number = 0;
 
-  // 常见的 Ollama 模型，实际模型列表会动态获取
-  private readonly commonModels: ModelInfo[] = [
+  // 默认的基础模型配置（在无法连接到Ollama时使用）
+  private static readonly DEFAULT_MODELS: ModelInfo[] = [
     {
-      id: "llama3.2",
+      id: "llama3.3:latest",
+      name: "Llama 3.3",
+      description: "Meta's latest Llama model for general purpose tasks",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 8192,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0, // 本地部署，无费用
+        outputCostPer1KTokens: 0,
+      },
+    },
+    {
+      id: "llama3.2:latest",
       name: "Llama 3.2",
-      description: "Meta's Llama 3.2 model with 3B parameters",
+      description: "Meta's Llama 3.2 model for various text tasks",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
         streaming: true,
-        contextLength: 128000,
+        contextLength: 8192,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0,
+        outputCostPer1KTokens: 0,
       },
     },
     {
-      id: "llama3.2:1b",
-      name: "Llama 3.2 1B",
-      description: "Meta's Llama 3.2 model with 1B parameters (lightweight)",
+      id: "codellama:latest",
+      name: "Code Llama",
+      description: "Specialized model for code generation and programming",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
         streaming: true,
-        contextLength: 128000,
+        contextLength: 16384,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0,
+        outputCostPer1KTokens: 0,
       },
     },
     {
-      id: "llama3.1",
-      name: "Llama 3.1",
-      description: "Meta's Llama 3.1 model with 8B parameters",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: false,
-        streaming: true,
-        contextLength: 128000,
-      },
-    },
-    {
-      id: "llama3.1:70b",
-      name: "Llama 3.1 70B",
-      description:
-        "Meta's Llama 3.1 model with 70B parameters (high capability)",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: false,
-        streaming: true,
-        contextLength: 128000,
-      },
-    },
-    {
-      id: "mistral",
-      name: "Mistral",
-      description: "Mistral AI's 7B parameter model",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: false,
-        streaming: true,
-        contextLength: 32768,
-      },
-    },
-    {
-      id: "phi3",
-      name: "Phi-3",
-      description: "Microsoft's Phi-3 model",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: false,
-        streaming: true,
-        contextLength: 128000,
-      },
-    },
-    {
-      id: "gemma2",
+      id: "gemma2:latest",
       name: "Gemma 2",
       description: "Google's Gemma 2 model",
       capabilities: {
@@ -103,109 +98,46 @@ export class OllamaAdapter implements BaseAdapter {
         streaming: true,
         contextLength: 8192,
       },
-    },
-    {
-      id: "codellama",
-      name: "Code Llama",
-      description: "Meta's Code Llama model specialized for code generation",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: false,
-        streaming: true,
-        contextLength: 16384,
+      pricing: {
+        inputCostPer1KTokens: 0,
+        outputCostPer1KTokens: 0,
       },
     },
     {
-      id: "llava",
-      name: "LLaVA",
-      description:
-        "Large Language and Vision Assistant with multimodal capabilities",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: false,
-        streaming: true,
-        contextLength: 4096,
-      },
-    },
-    {
-      id: "qwen2.5",
+      id: "qwen2.5:latest",
       name: "Qwen 2.5",
-      description: "Alibaba's Qwen 2.5 model",
+      description: "Alibaba's Qwen 2.5 model with multilingual support",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
         streaming: true,
         contextLength: 32768,
       },
+      pricing: {
+        inputCostPer1KTokens: 0,
+        outputCostPer1KTokens: 0,
+      },
     },
   ];
 
-  constructor(baseURL?: string) {
-    if (baseURL) {
-      this.baseURL = baseURL;
-    }
-  }
+  constructor(config: OllamaAdapterConfig = {}) {
+    super(OllamaAdapter.DEFAULT_MODELS);
+    this.config = {
+      baseURL: "http://localhost:11434/api",
+      enableModelDiscovery: true,
+      modelRefreshInterval: 300, // 5分钟
+      verbose: false,
+      ...config,
+    };
 
-  /**
-   * 动态获取 Ollama 服务器上可用的模型
-   */
-  private async fetchAvailableModels(): Promise<ModelInfo[]> {
-    try {
-      const response = await fetch(
-        `${this.baseURL.replace("/api", "")}/api/tags`
-      );
-      if (!response.ok) {
-        console.warn(
-          "Could not fetch models from Ollama server, using common models"
-        );
-        return this.commonModels;
-      }
-
-      const data = await response.json();
-      const models: ModelInfo[] = data.models.map((model: any) => {
-        // 尝试在常见模型中找到匹配的模型信息
-        const commonModel = this.commonModels.find(
-          (cm) =>
-            model.name.includes(cm.id) ||
-            cm.id.includes(model.name.split(":")[0])
-        );
-
-        return {
-          id: model.name,
-          name: model.name,
-          description:
-            commonModel?.description || `Ollama model: ${model.name}`,
-          capabilities: commonModel?.capabilities || {
-            textGeneration: true,
-            imageGeneration: false,
-            streaming: true,
-            contextLength: 4096,
-          },
-          pricing: {
-            inputCostPer1KTokens: 0, // 本地模型无费用
-            outputCostPer1KTokens: 0,
-          },
-        };
+    // 初始化时尝试发现模型
+    if (this.config.enableModelDiscovery) {
+      this.refreshModels().catch((error) => {
+        if (this.config.verbose) {
+          console.warn("初始模型发现失败:", error);
+        }
       });
-
-      this.availableModels = models;
-      return models;
-    } catch (error) {
-      console.warn("Error fetching models from Ollama server:", error);
-      // 如果无法连接到服务器，返回常见模型列表
-      return this.commonModels;
     }
-  }
-
-  getSupportedModels(): ModelInfo[] {
-    // 如果还没有获取过模型，先返回常见模型列表
-    // 真正的动态模型获取会在后台进行
-    if (this.availableModels.length === 0) {
-      // 异步获取真实的模型列表，但不阻塞当前调用
-      this.fetchAvailableModels().catch(console.warn);
-      return [...this.commonModels];
-    }
-    return [...this.availableModels];
   }
 
   /**
@@ -213,20 +145,58 @@ export class OllamaAdapter implements BaseAdapter {
    */
   private getLanguageModel(modelId: string): LanguageModel {
     const ollama = createOllama({
-      baseURL: this.baseURL,
+      baseURL: this.config.baseURL,
     });
-    return ollama(modelId);
+    return ollama(modelId as any);
+  }
+
+  /**
+   * 重写父类方法以支持动态模型
+   */
+  getSupportedModels(): ModelInfo[] {
+    const shouldRefresh = this.shouldRefreshModels();
+
+    if (shouldRefresh && this.config.enableModelDiscovery) {
+      // 异步刷新模型，但立即返回当前可用的模型
+      this.refreshModels().catch((error) => {
+        if (this.config.verbose) {
+          console.warn("模型刷新失败:", error);
+        }
+      });
+    }
+
+    // 合并默认模型和动态发现的模型
+    const allModels = [...super.getSupportedModels(), ...this.dynamicModels];
+
+    // 去重（以动态模型为准）
+    const uniqueModels = allModels.reduce((acc, model) => {
+      const existing = acc.find((m) => m.id === model.id);
+      if (!existing) {
+        acc.push(model);
+      }
+      return acc;
+    }, [] as ModelInfo[]);
+
+    return uniqueModels;
   }
 
   async validateApiKey(apiKey: string): Promise<boolean> {
-    // Ollama 不需要 API 密钥，但我们检查服务器是否可访问
     try {
-      const response = await fetch(
-        `${this.baseURL.replace("/api", "")}/api/tags`
-      );
+      // Ollama 通常不需要 API 密钥（本地部署）
+      // 但我们可以通过尝试连接来验证服务是否可用
+      const baseURL = this.config.baseURL || "http://localhost:11434/api";
+      const response = await fetch(`${baseURL.replace("/api", "")}/api/tags`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
       return response.ok;
     } catch (error) {
-      console.warn("Ollama server is not accessible:", error);
+      if (this.config.verbose) {
+        console.warn("Ollama服务验证失败:", error);
+      }
       return false;
     }
   }
@@ -237,40 +207,29 @@ export class OllamaAdapter implements BaseAdapter {
     apiKey: string
   ): Promise<TextResponse | ReadableStream<StreamChunk>> {
     try {
-      // 检查模型是否支持文本生成
-      if (!this.supportsCapability(options.model, "textGeneration")) {
-        throw new LLMAdapterError(
-          `Model ${options.model} does not support text generation`,
-          "UNSUPPORTED_OPERATION"
-        );
-      }
+      // 对于Ollama，我们不强制要求API密钥，但会验证能力
+      this.validateTextGenerationCapability(options.model);
+
+      // 确保模型可用
+      await this.ensureModelAvailable(options.model);
 
       const model = this.getLanguageModel(options.model);
 
-      // 构建消息
-      let messages: Array<{
-        role: "system" | "user" | "assistant";
-        content: string;
-      }> = [];
+      // 使用标准化消息构建器
+      const messages = this.createMessageBuilder()
+        .addSystemPrompt(options.systemPrompt || "")
+        .addContext(options.context || "")
+        .addUserMessage(prompt)
+        .build();
 
-      if (options.systemPrompt) {
-        messages.push({
-          role: "system",
-          content: options.systemPrompt,
+      // 日志记录
+      if (this.config.verbose) {
+        console.log("OllamaAdapter generateText:", {
+          model: options.model,
+          baseURL: this.config.baseURL,
+          stream: options.stream,
         });
       }
-
-      if (options.context) {
-        messages.push({
-          role: "assistant",
-          content: options.context,
-        });
-      }
-
-      messages.push({
-        role: "user",
-        content: prompt,
-      });
 
       // 构建生成参数
       const generateParams = {
@@ -281,38 +240,16 @@ export class OllamaAdapter implements BaseAdapter {
       };
 
       if (options.stream) {
-        // 流式生成
+        // 使用标准化流处理器
         const result = await streamText(generateParams);
-        const self = this;
 
-        return new ReadableStream<StreamChunk>({
-          async start(controller) {
-            try {
-              for await (const chunk of result.textStream) {
-                controller.enqueue({
-                  content: chunk,
-                  isComplete: false,
-                });
-              }
-
-              // 发送完成信号
-              controller.enqueue({
-                content: "",
-                isComplete: true,
-                metadata: {
-                  model: options.model,
-                  usage: result.usage ? await result.usage : undefined,
-                  finishReason: result.finishReason
-                    ? await result.finishReason
-                    : undefined,
-                },
-              });
-              controller.close();
-            } catch (error) {
-              controller.error(self.handleOllamaError(error));
-            }
-          },
-        });
+        return StreamHandler.createTextStream(
+          result.textStream,
+          options.model,
+          result.usage || Promise.resolve(undefined),
+          result.finishReason || Promise.resolve(undefined),
+          (error) => this.handleError(error)
+        );
       } else {
         // 非流式生成
         const result = await generateText(generateParams);
@@ -327,11 +264,11 @@ export class OllamaAdapter implements BaseAdapter {
         };
       }
     } catch (error) {
-      throw this.handleOllamaError(error);
+      throw this.handleError(error);
     }
   }
 
-  // Ollama 不支持图像生成，但保持接口一致性
+  // Ollama目前不支持图像生成，但保持接口一致性
   async generateImage(
     prompt: string,
     options: ImageGenerationOptions,
@@ -343,150 +280,265 @@ export class OllamaAdapter implements BaseAdapter {
     );
   }
 
-  supportsCapability(
-    modelId: string,
-    capability: "textGeneration" | "imageGeneration" | "streaming"
-  ): boolean {
-    // 对于 Ollama，我们假设所有模型都支持文本生成和流式传输
-    // 但不支持图像生成（除非是专门的多模态模型如 LLaVA）
-    switch (capability) {
-      case "textGeneration":
-        return true;
-      case "imageGeneration":
-        return false; // Ollama 主要用于文本生成
-      case "streaming":
-        return true;
-      default:
-        return false;
+  /**
+   * 手动刷新可用模型列表
+   */
+  async refreshModels(): Promise<void> {
+    try {
+      if (this.config.verbose) {
+        console.log("正在刷新Ollama模型列表...");
+      }
+
+      const baseURL = this.config.baseURL || "http://localhost:11434/api";
+      const response = await fetch(`${baseURL.replace("/api", "")}/api/tags`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const models = data.models || [];
+
+      this.dynamicModels = models.map((model: any) =>
+        this.mapOllamaModelToModelInfo(model)
+      );
+      this.lastModelRefresh = Date.now();
+
+      if (this.config.verbose) {
+        console.log(
+          `发现 ${this.dynamicModels.length} 个Ollama模型:`,
+          this.dynamicModels.map((m) => m.id)
+        );
+      }
+    } catch (error) {
+      if (this.config.verbose) {
+        console.warn("刷新Ollama模型失败:", error);
+      }
+      // 刷新失败时保持现有模型列表
+      throw new LLMAdapterError(
+        `Failed to refresh Ollama models: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+        "SERVICE_UNAVAILABLE"
+      );
     }
   }
 
-  getContextLength(modelId: string): number | undefined {
-    const model = this.commonModels.find(
-      (m) => m.id === modelId || modelId.includes(m.id)
-    );
-    return model?.capabilities.contextLength || 4096; // 默认上下文长度
+  /**
+   * 更新配置
+   */
+  updateConfig(config: Partial<OllamaAdapterConfig>): void {
+    this.config = { ...this.config, ...config };
+    if (this.config.verbose) {
+      console.log("OllamaAdapter配置更新:", this.config);
+    }
   }
 
-  getPricing(
-    modelId: string
-  ):
-    | { inputCostPer1KTokens?: number; outputCostPer1KTokens?: number }
-    | undefined {
-    // Ollama 是本地模型，无费用
+  /**
+   * 获取当前配置
+   */
+  getConfig(): OllamaAdapterConfig {
+    return { ...this.config };
+  }
+
+  /**
+   * 获取本地可用模型的简单列表
+   */
+  async getLocalModels(): Promise<string[]> {
+    try {
+      await this.refreshModels();
+      return this.dynamicModels.map((model) => model.id);
+    } catch (error) {
+      if (this.config.verbose) {
+        console.warn("获取本地模型列表失败:", error);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * 检查Ollama服务是否运行
+   */
+  async isServiceRunning(): Promise<boolean> {
+    try {
+      const baseURL = this.config.baseURL || "http://localhost:11434/api";
+      const response = await fetch(
+        `${baseURL.replace("/api", "")}/api/version`,
+        {
+          method: "GET",
+        }
+      );
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * 确保指定模型可用
+   */
+  private async ensureModelAvailable(modelId: string): Promise<void> {
+    const allModels = this.getSupportedModels();
+    const model = allModels.find((m) => m.id === modelId);
+
+    if (!model) {
+      // 尝试刷新模型列表
+      await this.refreshModels();
+
+      const refreshedModels = this.getSupportedModels();
+      const refreshedModel = refreshedModels.find((m) => m.id === modelId);
+
+      if (!refreshedModel) {
+        throw new LLMAdapterError(
+          `Model ${modelId} is not available in Ollama. Available models: ${refreshedModels
+            .map((m) => m.id)
+            .join(", ")}`,
+          "MODEL_NOT_FOUND"
+        );
+      }
+    }
+  }
+
+  /**
+   * 判断是否需要刷新模型
+   */
+  private shouldRefreshModels(): boolean {
+    if (!this.config.enableModelDiscovery) return false;
+
+    const now = Date.now();
+    const refreshInterval = (this.config.modelRefreshInterval ?? 300) * 1000; // 转换为毫秒
+
+    return now - this.lastModelRefresh > refreshInterval;
+  }
+
+  /**
+   * 将Ollama模型信息映射为标准ModelInfo格式
+   */
+  private mapOllamaModelToModelInfo(ollamaModel: any): ModelInfo {
+    const modelId = ollamaModel.name || ollamaModel.model;
+    const size = ollamaModel.size || 0;
+    const modifiedAt = ollamaModel.modified_at;
+
+    // 根据模型名称推断能力
+    const isCodeModel = modelId.toLowerCase().includes("code");
+    const isLargeModel = size > 7000000000; // 7GB以上认为是大模型
+
     return {
-      inputCostPer1KTokens: 0,
-      outputCostPer1KTokens: 0,
+      id: modelId,
+      name: this.formatModelName(modelId),
+      description: this.generateModelDescription(modelId, size, modifiedAt),
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false, // Ollama目前主要支持文本生成
+        streaming: true,
+        contextLength: this.estimateContextLength(modelId, isLargeModel),
+      },
+      pricing: {
+        inputCostPer1KTokens: 0, // 本地部署无费用
+        outputCostPer1KTokens: 0,
+      },
     };
   }
 
   /**
-   * 设置自定义的 Ollama 服务器 URL
+   * 格式化模型名称
    */
-  setBaseURL(baseURL: string): void {
-    this.baseURL = baseURL;
-    // 清空缓存的模型列表，强制重新获取
-    this.availableModels = [];
-  }
+  private formatModelName(modelId: string): string {
+    // 移除版本标记并美化名称
+    const baseName = modelId.split(":")[0];
 
-  /**
-   * 获取当前的 Ollama 服务器 URL
-   */
-  getBaseURL(): string {
-    return this.baseURL;
-  }
+    // 常见模型名称映射
+    const nameMap: Record<string, string> = {
+      "llama3.3": "Llama 3.3",
+      "llama3.2": "Llama 3.2",
+      "llama3.1": "Llama 3.1",
+      llama3: "Llama 3",
+      llama2: "Llama 2",
+      codellama: "Code Llama",
+      gemma2: "Gemma 2",
+      gemma: "Gemma",
+      "qwen2.5": "Qwen 2.5",
+      qwen2: "Qwen 2",
+      qwen: "Qwen",
+      mistral: "Mistral",
+      phi3: "Phi-3",
+      dolphin: "Dolphin",
+      "neural-chat": "Neural Chat",
+    };
 
-  /**
-   * 处理 Ollama 错误并转换为统一的错误格式
-   */
-  private handleOllamaError(error: any): LLMAdapterError {
-    // 处理网络连接错误
-    if (error?.code === "ECONNREFUSED" || error?.code === "ENOTFOUND") {
-      return new LLMAdapterError(
-        `Network error: Unable to connect to Ollama server at ${this.baseURL}. Please ensure Ollama is running and accessible.`,
-        "NETWORK_ERROR",
-        undefined,
-        error
-      );
-    }
-
-    // 处理超时错误
-    if (error?.code === "ETIMEDOUT") {
-      return new LLMAdapterError(
-        "Request timeout: Ollama server did not respond in time",
-        "TIMEOUT_ERROR",
-        undefined,
-        error
-      );
-    }
-
-    // 处理 HTTP 状态错误
-    if (error?.response?.status) {
-      const status = error.response.status;
-      let message = error.message || "Unknown error occurred";
-      let code = "UNKNOWN_ERROR";
-
-      switch (status) {
-        case 400:
-          code = "INVALID_REQUEST";
-          message = "Invalid request: " + (error.message || "Bad request");
-          break;
-        case 404:
-          code = "MODEL_NOT_FOUND";
-          message = `Model not found. Please ensure the model is installed on your Ollama server.`;
-          break;
-        case 500:
-        case 502:
-        case 503:
-        case 504:
-          code = "SERVICE_UNAVAILABLE";
-          message = "Ollama server is temporarily unavailable";
-          break;
-      }
-
-      return new LLMAdapterError(message, code, status, error);
-    }
-
-    // 处理 AI SDK 特定错误
-    if (error?.name === "AI_APICallError") {
-      return new LLMAdapterError(
-        `API call failed: ${error.message}`,
-        "API_CALL_ERROR",
-        error.status,
-        error
-      );
-    }
-
-    if (error?.name === "AI_InvalidPromptError") {
-      return new LLMAdapterError(
-        `Invalid prompt: ${error.message}`,
-        "INVALID_PROMPT",
-        400,
-        error
-      );
-    }
-
-    if (error?.name === "AI_InvalidResponseFormatError") {
-      return new LLMAdapterError(
-        `Invalid response format: ${error.message}`,
-        "INVALID_RESPONSE_FORMAT",
-        undefined,
-        error
-      );
-    }
-
-    // 处理其他已知错误类型
-    if (error instanceof LLMAdapterError) {
-      return error;
-    }
-
-    // 默认错误处理
-    return new LLMAdapterError(
-      error?.message || "An unexpected error occurred",
-      "UNKNOWN_ERROR",
-      undefined,
-      error
+    return (
+      nameMap[baseName] || baseName.charAt(0).toUpperCase() + baseName.slice(1)
     );
+  }
+
+  /**
+   * 生成模型描述
+   */
+  private generateModelDescription(
+    modelId: string,
+    size: number,
+    modifiedAt?: string
+  ): string {
+    const baseName = modelId.split(":")[0].toLowerCase();
+    const sizeGB = size ? (size / 1024 ** 3).toFixed(1) + "GB" : "Unknown size";
+    const lastModified = modifiedAt
+      ? new Date(modifiedAt).toLocaleDateString()
+      : "";
+
+    let description = "";
+
+    if (baseName.includes("llama")) {
+      description = "Meta's Llama model for general purpose text generation";
+    } else if (baseName.includes("code")) {
+      description =
+        "Specialized model for code generation and programming tasks";
+    } else if (baseName.includes("gemma")) {
+      description = "Google's Gemma model for various language tasks";
+    } else if (baseName.includes("qwen")) {
+      description = "Alibaba's Qwen model with multilingual capabilities";
+    } else if (baseName.includes("mistral")) {
+      description = "Mistral AI's high-performance language model";
+    } else if (baseName.includes("phi")) {
+      description = "Microsoft's compact and efficient Phi model";
+    } else {
+      description = "Local Ollama model for text generation";
+    }
+
+    return `${description} (${sizeGB}${
+      lastModified ? `, updated ${lastModified}` : ""
+    })`;
+  }
+
+  /**
+   * 估算上下文长度
+   */
+  private estimateContextLength(
+    modelId: string,
+    isLargeModel: boolean
+  ): number {
+    const baseName = modelId.toLowerCase();
+
+    // 基于模型名称的上下文长度映射
+    if (baseName.includes("llama3.3") || baseName.includes("llama3.2")) {
+      return 128000; // 新版Llama支持更长上下文
+    }
+    if (baseName.includes("qwen2.5")) {
+      return 32768; // Qwen 2.5 支持较长上下文
+    }
+    if (baseName.includes("codellama")) {
+      return 16384; // Code Llama 通常支持更长上下文
+    }
+    if (baseName.includes("gemma2")) {
+      return 8192;
+    }
+
+    // 默认基于模型大小估算
+    return isLargeModel ? 8192 : 4096;
   }
 }
 
@@ -494,21 +546,33 @@ export class OllamaAdapter implements BaseAdapter {
  * Ollama 适配器工厂
  */
 export class OllamaAdapterFactory implements AdapterFactory {
-  private baseURL?: string;
+  private config: OllamaAdapterConfig;
 
-  constructor(baseURL?: string) {
-    this.baseURL = baseURL;
+  constructor(config: OllamaAdapterConfig = {}) {
+    this.config = config;
   }
 
-  createAdapter(): BaseAdapter {
-    return new OllamaAdapter(this.baseURL);
+  createAdapter(): OllamaAdapter {
+    return new OllamaAdapter(this.config);
   }
 
   getProviderInfo() {
     return {
       id: "ollama",
       name: "Ollama",
-      description: "Local AI models running on Ollama server",
+      description:
+        "Local Ollama models with dynamic model discovery and management",
     };
   }
+
+  /**
+   * 更新工厂配置
+   */
+  updateConfig(config: Partial<OllamaAdapterConfig>): void {
+    this.config = { ...this.config, ...config };
+  }
 }
+
+// 自动注册适配器
+const registry = AdapterRegistry.getInstance();
+registry.register("ollama", new OllamaAdapterFactory());

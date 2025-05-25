@@ -9,15 +9,20 @@ import {
   ModelInfo,
   LLMAdapterError,
 } from "./BaseAdapter";
-import { MockAdapterFactory } from "./adapters/MockAdapter";
-import { OpenAIAdapterFactory } from "./adapters/OpenAIAdapter";
+import { AdapterRegistry } from "./adapters/AdapterRegistry";
 import { apiKeyService } from "../apiKeyService";
+
+// 自动注册所有适配器
+import "./adapters/MockAdapter";
+import "./adapters/OpenAIAdapter";
+import "./adapters/ClaudeAdapter";
+import "./adapters/GeminiAdapter";
+import "./adapters/OllamaAdapter";
 
 /**
  * 提供者注册信息
  */
 interface ProviderRegistration {
-  factory: AdapterFactory;
   instance?: BaseAdapter;
   enabled: boolean;
   lastError?: string;
@@ -49,8 +54,10 @@ interface ExecutionResult<T> {
 /**
  * 中央 LLM 服务
  * 管理所有 LLM 提供者适配器，提供统一的访问接口
+ * 使用 AdapterRegistry 系统进行统一管理
  */
 export class LLMService {
+  private registry: AdapterRegistry;
   private providers = new Map<string, ProviderRegistration>();
   private config: LLMServiceConfig = {
     enableLogging: true,
@@ -64,25 +71,47 @@ export class LLMService {
       this.config = { ...this.config, ...config };
     }
 
-    // 默认注册适配器
-    this.registerProvider(new MockAdapterFactory());
-    this.registerProvider(new OpenAIAdapterFactory());
+    // 使用单例注册表
+    this.registry = AdapterRegistry.getInstance();
+
+    // 初始化所有注册的提供者
+    this.initializeProviders();
 
     this.log("LLM Service initialized");
   }
 
   /**
-   * 注册新的提供者适配器
+   * 初始化所有注册的提供者
+   */
+  private initializeProviders(): void {
+    const providerIds = this.registry.getProviderIds();
+
+    for (const providerId of providerIds) {
+      this.providers.set(providerId, {
+        enabled: true,
+      });
+
+      const factory = this.registry.getFactory(providerId);
+      if (factory) {
+        const info = factory.getProviderInfo();
+        this.log(
+          `Provider ${providerId} (${info.name}) registered successfully`
+        );
+      }
+    }
+  }
+
+  /**
+   * 注册新的提供者适配器 (向后兼容)
    */
   registerProvider(factory: AdapterFactory): void {
     const info = factory.getProviderInfo();
 
-    if (this.providers.has(info.id)) {
-      this.log(`Provider ${info.id} already registered, updating...`);
-    }
+    // 注册到全局注册表
+    this.registry.register(info.id, factory);
 
+    // 更新本地提供者映射
     this.providers.set(info.id, {
-      factory,
       enabled: true,
     });
 
@@ -132,9 +161,13 @@ export class LLMService {
       return provider.instance;
     }
 
-    // 创建新实例
+    // 使用注册表创建新实例
     try {
-      const adapter = provider.factory.createAdapter();
+      const adapter = this.registry.createAdapter(providerId);
+
+      if (!adapter) {
+        throw new Error(`No factory found for provider ${providerId}`);
+      }
 
       if (this.config.cacheAdapters) {
         provider.instance = adapter;
@@ -165,7 +198,12 @@ export class LLMService {
     lastError?: string;
   }> {
     return Array.from(this.providers.entries()).map(([id, registration]) => {
-      const info = registration.factory.getProviderInfo();
+      const factory = this.registry.getFactory(id);
+      const info = factory?.getProviderInfo() || {
+        name: id,
+        description: undefined,
+      };
+
       return {
         id,
         name: info.name,
