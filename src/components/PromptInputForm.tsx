@@ -5,6 +5,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { llmService } from "@/services/llm";
+import { useUserSettingsStore } from "@/stores/userSettingsStore";
 import MultiSelect, { MultiSelectOption } from "./MultiSelect";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,6 +65,9 @@ export default function PromptInputForm({
   const [modelOptions, setModelOptions] = useState<MultiSelectOption[]>([]);
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
 
+  // 使用用户设置存储
+  const { providers } = useUserSettingsStore();
+
   const {
     register,
     handleSubmit,
@@ -84,24 +88,25 @@ export default function PromptInputForm({
   const prompt = watch("prompt");
   const promptLength = prompt?.length || 0;
 
-  // 初始化提供商选项
+  // 初始化提供商选项 - 使用用户设置存储
   useEffect(() => {
     try {
-      const providers = llmService.getProviders();
       const options: MultiSelectOption[] = providers
-        .filter((provider) => provider.enabled)
+        .filter((provider) => provider.enabled && provider.apiKeyStored)
         .map((provider) => ({
           value: provider.id,
           label: provider.name,
-          description: provider.description,
+          description: `${
+            provider.models.filter((m) => m.enabled).length
+          } 个可用模型`,
         }));
       setProviderOptions(options);
     } catch (error) {
       console.error("Failed to load providers:", error);
     }
-  }, []);
+  }, [providers]);
 
-  // 当选择的提供商变化时，更新模型选项
+  // 当选择的提供商变化时，更新模型选项 - 使用用户设置存储
   useEffect(() => {
     if (selectedProviders.length === 0) {
       setModelOptions([]);
@@ -110,16 +115,25 @@ export default function PromptInputForm({
     }
 
     try {
-      const allModels = llmService.getAllModels();
-      const filteredModels = allModels.filter((model) =>
-        selectedProviders.includes(model.providerId)
-      );
+      const options: MultiSelectOption[] = [];
 
-      const options: MultiSelectOption[] = filteredModels.map((model) => ({
-        value: `${model.providerId}:${model.id}`,
-        label: `${model.name} (${model.providerName})`,
-        description: model.description,
-      }));
+      // 从用户设置存储中获取模型
+      selectedProviders.forEach((providerId) => {
+        const provider = providers.find((p) => p.id === providerId);
+        if (provider && provider.enabled && provider.apiKeyStored) {
+          provider.models
+            .filter((model) => model.enabled)
+            .forEach((model) => {
+              options.push({
+                value: `${providerId}:${model.id}`,
+                label: `${model.name} (${provider.name})`,
+                description: `温度: ${model.temperature || 0.7}, 最大令牌: ${
+                  model.maxTokens || 4096
+                }`,
+              });
+            });
+        }
+      });
 
       setModelOptions(options);
 
@@ -135,7 +149,7 @@ export default function PromptInputForm({
       console.error("Failed to load models:", error);
       setModelOptions([]);
     }
-  }, [selectedProviders, setValue, getValues]);
+  }, [selectedProviders, providers, setValue, getValues]);
 
   const handleProviderChange = (providers: string[]) => {
     setSelectedProviders(providers);
