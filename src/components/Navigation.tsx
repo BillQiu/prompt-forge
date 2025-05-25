@@ -5,13 +5,18 @@ import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { Home, Settings, TestTube } from "lucide-react";
+import { Home, Settings, TestTube, Clock } from "lucide-react";
 
 const navigationItems = [
   {
     href: "/",
     label: "首页",
     icon: Home,
+  },
+  {
+    href: "/timeline",
+    label: "时间轴",
+    icon: Clock,
   },
   {
     href: "/settings",

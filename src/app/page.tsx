@@ -27,7 +27,10 @@ export default function Home() {
 
           <div className="flex gap-4 items-center justify-center flex-wrap">
             <Button asChild size="lg">
-              <Link href="/settings">开始使用</Link>
+              <Link href="/timeline">查看时间轴</Link>
+            </Button>
+            <Button variant="outline" size="lg" asChild>
+              <Link href="/settings">API设置</Link>
             </Button>
             <Button variant="outline" size="lg" asChild>
               <Link href="/test-form">测试表单</Link>
