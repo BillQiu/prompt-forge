@@ -14,18 +14,99 @@ import {
 
 /**
  * OpenAI 适配器，用于与 OpenAI API 交互
+ * 支持最新的 GPT-4.1 系列、o3/o4-mini 推理模型和图像生成
  * 使用 AI SDK 统一接口
  */
 export class OpenAIAdapter implements BaseAdapter {
   readonly providerId = "openai";
   readonly providerName = "OpenAI";
-  readonly description = "OpenAI GPT models and DALL-E image generation";
+  readonly description =
+    "OpenAI GPT-4.1, o3/o4-mini reasoning models, and image generation";
 
   private readonly models: ModelInfo[] = [
+    // GPT-4.1 系列 - 最新模型
+    {
+      id: "gpt-4.1",
+      name: "GPT-4.1",
+      description: "最智能的模型，在编程、指令遵循和长上下文理解方面有重大改进",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 1000000, // 1M tokens
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.002,
+        outputCostPer1KTokens: 0.008,
+      },
+    },
+    {
+      id: "gpt-4.1-mini",
+      name: "GPT-4.1 Mini",
+      description: "平衡速度和智能的经济型模型，性能超越 GPT-4o",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 1000000, // 1M tokens
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.0004,
+        outputCostPer1KTokens: 0.0016,
+      },
+    },
+    {
+      id: "gpt-4.1-nano",
+      name: "GPT-4.1 Nano",
+      description: "最快、最经济的模型，适用于低延迟任务",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 1000000, // 1M tokens
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.0001,
+        outputCostPer1KTokens: 0.0004,
+      },
+    },
+    // 推理模型系列
+    {
+      id: "o3",
+      name: "OpenAI o3",
+      description: "最强大的推理模型，在编程、数学、科学和视觉感知方面表现卓越",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 1000000, // 1M tokens
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.01,
+        outputCostPer1KTokens: 0.04,
+      },
+    },
+    {
+      id: "o4-mini",
+      name: "OpenAI o4-mini",
+      description:
+        "快速、经济高效的推理模型，在数学、编程和视觉任务方面表现强劲",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 1000000, // 1M tokens
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.0011,
+        outputCostPer1KTokens: 0.0044,
+      },
+    },
+    // GPT-4o 系列 - 更新定价
     {
       id: "gpt-4o",
       name: "GPT-4o",
-      description: "Most advanced model with vision capabilities",
+      description: "具有视觉能力的先进多模态模型",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
@@ -34,13 +115,13 @@ export class OpenAIAdapter implements BaseAdapter {
       },
       pricing: {
         inputCostPer1KTokens: 0.005,
-        outputCostPer1KTokens: 0.015,
+        outputCostPer1KTokens: 0.02,
       },
     },
     {
       id: "gpt-4o-mini",
       name: "GPT-4o Mini",
-      description: "Affordable and intelligent small model",
+      description: "经济实惠的智能小型模型",
       capabilities: {
         textGeneration: true,
         imageGeneration: false,
@@ -48,63 +129,36 @@ export class OpenAIAdapter implements BaseAdapter {
         contextLength: 128000,
       },
       pricing: {
-        inputCostPer1KTokens: 0.00015,
-        outputCostPer1KTokens: 0.0006,
+        inputCostPer1KTokens: 0.0006,
+        outputCostPer1KTokens: 0.0024,
       },
     },
+    // 图像生成模型
     {
-      id: "gpt-4-turbo",
-      name: "GPT-4 Turbo",
-      description: "High-intelligence model for complex, multi-step tasks",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: false,
-        streaming: true,
-        contextLength: 128000,
-      },
-      pricing: {
-        inputCostPer1KTokens: 0.01,
-        outputCostPer1KTokens: 0.03,
-      },
-    },
-    {
-      id: "gpt-4",
-      name: "GPT-4",
-      description: "Previous generation high-intelligence model",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: false,
-        streaming: true,
-        contextLength: 8192,
-      },
-      pricing: {
-        inputCostPer1KTokens: 0.03,
-        outputCostPer1KTokens: 0.06,
-      },
-    },
-    {
-      id: "gpt-3.5-turbo",
-      name: "GPT-3.5 Turbo",
-      description: "Fast, inexpensive model for simple tasks",
-      capabilities: {
-        textGeneration: true,
-        imageGeneration: false,
-        streaming: true,
-        contextLength: 16385,
-      },
-      pricing: {
-        inputCostPer1KTokens: 0.0005,
-        outputCostPer1KTokens: 0.0015,
-      },
-    },
-    {
-      id: "dall-e-3",
-      name: "DALL-E 3",
-      description: "Advanced image generation model",
+      id: "gpt-image-1",
+      name: "GPT Image 1",
+      description: "精确、高保真的图像生成和编辑模型",
       capabilities: {
         textGeneration: false,
         imageGeneration: true,
         streaming: false,
+        contextLength: 128000,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.005,
+        outputCostPer1KTokens: 0.04,
+      },
+    },
+    // 传统图像生成模型
+    {
+      id: "dall-e-3",
+      name: "DALL-E 3",
+      description: "先进的图像生成模型",
+      capabilities: {
+        textGeneration: false,
+        imageGeneration: true,
+        streaming: false,
+        contextLength: 4000,
       },
       pricing: {
         inputCostPer1KTokens: 0.04, // HD 1024x1024
@@ -114,15 +168,32 @@ export class OpenAIAdapter implements BaseAdapter {
     {
       id: "dall-e-2",
       name: "DALL-E 2",
-      description: "Previous generation image generation model",
+      description: "上一代图像生成模型",
       capabilities: {
         textGeneration: false,
         imageGeneration: true,
         streaming: false,
+        contextLength: 1000,
       },
       pricing: {
         inputCostPer1KTokens: 0.02, // 1024x1024
         outputCostPer1KTokens: 0.02,
+      },
+    },
+    // 传统模型 (保留兼容性)
+    {
+      id: "gpt-4-turbo",
+      name: "GPT-4 Turbo",
+      description: "高智能模型，适用于复杂的多步骤任务 (建议使用 GPT-4.1)",
+      capabilities: {
+        textGeneration: true,
+        imageGeneration: false,
+        streaming: true,
+        contextLength: 128000,
+      },
+      pricing: {
+        inputCostPer1KTokens: 0.01,
+        outputCostPer1KTokens: 0.03,
       },
     },
   ];
@@ -147,7 +218,8 @@ export class OpenAIAdapter implements BaseAdapter {
         return false;
       }
 
-      const model = this.getLanguageModel("gpt-3.5-turbo", apiKey);
+      // 使用最经济的模型进行验证
+      const model = this.getLanguageModel("gpt-4.1-nano", apiKey);
 
       // 尝试一个简单的生成请求来验证API密钥
       await generateText({
@@ -222,7 +294,7 @@ export class OpenAIAdapter implements BaseAdapter {
 
       if (options.stream) {
         // 返回流式响应
-        const { textStream, usage } = await streamText(generateOptions);
+        const { textStream, usage } = streamText(generateOptions);
 
         return new ReadableStream<StreamChunk>({
           start: async (controller) => {
@@ -365,7 +437,7 @@ export class OpenAIAdapter implements BaseAdapter {
 
     // AI SDK 错误处理
     if (error?.name === "AI_APICallError") {
-      const { message, statusCode, cause } = error;
+      const { message, statusCode } = error;
 
       switch (statusCode) {
         case 401:
@@ -484,7 +556,8 @@ export class OpenAIAdapterFactory implements AdapterFactory {
     return {
       id: "openai",
       name: "OpenAI",
-      description: "OpenAI GPT models via AI SDK",
+      description:
+        "OpenAI GPT-4.1, o3/o4-mini reasoning models, and image generation via AI SDK",
     };
   }
 }
