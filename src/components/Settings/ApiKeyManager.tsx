@@ -13,6 +13,18 @@ import {
   EncryptionError,
 } from "@/services/encryption";
 import { dbHelpers } from "@/services/db";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 // API 密钥表单验证 schema
 const apiKeySchema = z.object({
@@ -187,220 +199,214 @@ export default function ApiKeyManager() {
   return (
     <div className="space-y-6">
       {/* 标题和添加按钮 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            API 密钥管理
-          </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            安全地管理您的 LLM 提供商 API 密钥
-          </p>
-        </div>
-
-        {!showAddForm && (
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            添加密钥
-          </button>
-        )}
-      </div>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl">API 密钥管理</CardTitle>
+              <CardDescription>
+                安全地管理您的 LLM 提供商 API 密钥
+              </CardDescription>
+            </div>
+            {!showAddForm && (
+              <Button onClick={() => setShowAddForm(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                添加密钥
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+      </Card>
 
       {/* 添加密钥表单 */}
       {showAddForm && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              添加新的 API 密钥
-            </h3>
-            <button
-              onClick={() => {
-                setShowAddForm(false);
-                reset();
-              }}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit(handleAddKey)} className="space-y-4">
-            {/* 提供商选择 */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                提供商 *
-              </label>
-              <select
-                {...register("providerId")}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value="">选择提供商</option>
-                {providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
-              {errors.providerId && (
-                <p className="text-red-500 text-sm mt-1">
-                  {errors.providerId.message}
-                </p>
-              )}
-            </div>
-
-            {/* 密钥名称（可选） */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                密钥名称（可选）
-              </label>
-              <input
-                type="text"
-                {...register("name")}
-                placeholder="例如：生产环境密钥"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-
-            {/* API 密钥 */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                API 密钥 *
-              </label>
-              <input
-                type="password"
-                {...register("apiKey")}
-                placeholder="输入您的 API 密钥"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-              {errors.apiKey && (
-                <p className="text-red-500 text-sm mt-1">
-                  {errors.apiKey.message}
-                </p>
-              )}
-            </div>
-
-            {/* 提交按钮 */}
-            <div className="flex justify-end space-x-3 pt-4">
-              <button
-                type="button"
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg">添加新的 API 密钥</CardTitle>
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => {
                   setShowAddForm(false);
                   reset();
                 }}
-                className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
-                取消
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSubmitting ? "保存中..." : "保存密钥"}
-              </button>
+                <X className="w-4 h-4" />
+              </Button>
             </div>
-          </form>
-        </div>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit(handleAddKey)} className="space-y-4">
+              {/* 提供商选择 */}
+              <div className="space-y-2">
+                <Label htmlFor="providerId">提供商 *</Label>
+                <select
+                  {...register("providerId")}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">选择提供商</option>
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.providerId && (
+                  <p className="text-sm text-destructive">
+                    {errors.providerId.message}
+                  </p>
+                )}
+              </div>
+
+              {/* 密钥名称（可选） */}
+              <div className="space-y-2">
+                <Label htmlFor="name">密钥名称（可选）</Label>
+                <Input {...register("name")} placeholder="例如：生产环境密钥" />
+              </div>
+
+              {/* API 密钥 */}
+              <div className="space-y-2">
+                <Label htmlFor="apiKey">API 密钥 *</Label>
+                <Input
+                  type="password"
+                  {...register("apiKey")}
+                  placeholder="输入您的 API 密钥"
+                />
+                {errors.apiKey && (
+                  <p className="text-sm text-destructive">
+                    {errors.apiKey.message}
+                  </p>
+                )}
+              </div>
+
+              {/* 提交按钮 */}
+              <div className="flex justify-end space-x-3 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowAddForm(false);
+                    reset();
+                  }}
+                >
+                  取消
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "保存中..." : "保存密钥"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
       {/* 已存储的密钥列表 */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          已存储的密钥 ({storedKeys.length})
-        </h3>
-
-        {storedKeys.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            <p>还没有存储任何 API 密钥</p>
-            <p className="text-sm mt-1">点击&ldquo;添加密钥&rdquo;开始添加</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {storedKeys.map((key) => (
-              <div
-                key={key.id}
-                className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-gray-900 dark:text-white">
-                          {getProviderName(key.providerId)}
-                          {key.name && (
-                            <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">
-                              ({key.name})
-                            </span>
-                          )}
-                        </h4>
-                        <div className="flex items-center space-x-2 mt-1">
-                          <code className="text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                            {showKey[key.id]
-                              ? "sk-1234567890abcdef..."
-                              : key.maskedKey}
-                          </code>
-                          <button
-                            onClick={() => toggleShowKey(key.id)}
-                            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                          >
-                            {showKey[key.id] ? (
-                              <EyeOff className="w-4 h-4" />
-                            ) : (
-                              <Eye className="w-4 h-4" />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">
+            已存储的密钥 ({storedKeys.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {storedKeys.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>还没有存储任何 API 密钥</p>
+              <p className="text-sm mt-1">点击"添加密钥"开始添加</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {storedKeys.map((key) => (
+                <Card key={key.id} className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3">
+                        <div className="flex-1">
+                          <h4 className="font-medium text-foreground flex items-center gap-2">
+                            <Badge variant="secondary">
+                              {getProviderName(key.providerId)}
+                            </Badge>
+                            {key.name && (
+                              <span className="text-sm text-muted-foreground">
+                                ({key.name})
+                              </span>
                             )}
-                          </button>
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          创建于 {key.createdAt.toLocaleDateString()}
-                          {key.lastUsed && (
-                            <span className="ml-3">
-                              最后使用 {key.lastUsed.toLocaleDateString()}
-                            </span>
-                          )}
+                          </h4>
+                          <div className="flex items-center space-x-2 mt-2">
+                            <code className="text-sm bg-muted px-2 py-1 rounded">
+                              {showKey[key.id]
+                                ? "sk-1234567890abcdef..."
+                                : key.maskedKey}
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => toggleShowKey(key.id)}
+                            >
+                              {showKey[key.id] ? (
+                                <EyeOff className="w-4 h-4" />
+                              ) : (
+                                <Eye className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            创建于 {key.createdAt.toLocaleDateString()}
+                            {key.lastUsed && (
+                              <span className="ml-3">
+                                最后使用 {key.lastUsed.toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => {
-                        /* TODO: 实现编辑功能 */
-                      }}
-                      className="p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                      title="编辑密钥"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteKey(key.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                      title="删除密钥"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          /* TODO: 实现编辑功能 */
+                        }}
+                        title="编辑密钥"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteKey(key.id)}
+                        title="删除密钥"
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* 安全提示 */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-        <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
-          🔒 安全提示
-        </h4>
-        <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
-          <li>• API 密钥使用 AES-GCM 加密存储在本地浏览器中</li>
-          <li>• 密钥不会被发送到任何第三方服务器</li>
-          <li>• 仅在调用相应的 LLM 服务时使用</li>
-          <li>• 建议定期轮换您的 API 密钥</li>
-        </ul>
-      </div>
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            🔒 安全提示
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="text-sm text-foreground space-y-1">
+            <li>• API 密钥使用 AES-GCM 加密存储在本地浏览器中</li>
+            <li>• 密钥不会被发送到任何第三方服务器</li>
+            <li>• 仅在调用相应的 LLM 服务时使用</li>
+            <li>• 建议定期轮换您的 API 密钥</li>
+          </ul>
+        </CardContent>
+      </Card>
     </div>
   );
 }

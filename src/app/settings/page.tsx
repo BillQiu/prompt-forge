@@ -1,10 +1,14 @@
 import ApiKeyManager from "@/components/Settings/ApiKeyManager";
+import Navigation from "@/components/Navigation";
 
 export default function SettingsPage() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <ApiKeyManager />
+    <div className="min-h-screen bg-background">
+      <Navigation />
+      <div className="container mx-auto py-8 px-4">
+        <div className="max-w-4xl mx-auto">
+          <ApiKeyManager />
+        </div>
       </div>
     </div>
   );
