@@ -77,6 +77,7 @@ const apiKeySchema = z
         case "openai":
           // OpenAI API keys start with "sk-"
           return data.apiKey.startsWith("sk-") && data.apiKey.length >= 50;
+
         default:
           return true;
       }
@@ -94,6 +95,7 @@ const apiKeySchema = z
           };
         case "openai":
           return { message: "OpenAI API密钥应以 'sk-' 开头，长度至少50个字符" };
+
         default:
           return { message: "API密钥格式不正确" };
       }
@@ -120,6 +122,20 @@ export default function ApiKeyManager() {
   const [selectedProvider, setSelectedProvider] = useState<string>("");
 
   const { providers, setApiKeyStored } = useUserSettingsStore();
+
+  // 临时调试功能：清除缓存
+  const clearCache = () => {
+    localStorage.removeItem("user-settings-store");
+    window.location.reload();
+  };
+
+  // 调试信息
+  console.log("Current providers:", providers);
+  console.log("Providers count:", providers.length);
+  console.log(
+    "Provider IDs:",
+    providers.map((p) => p.id)
+  );
 
   const {
     register,
@@ -346,12 +362,24 @@ export default function ApiKeyManager() {
                 安全地管理您的 LLM 提供商 API 密钥和服务器配置
               </CardDescription>
             </div>
-            {!showAddForm && (
-              <Button onClick={() => setShowAddForm(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                添加配置
-              </Button>
-            )}
+            <div className="flex space-x-2">
+              {!showAddForm && (
+                <Button onClick={() => setShowAddForm(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  添加配置
+                </Button>
+              )}
+              {/* 临时调试按钮 */}
+              {process.env.NODE_ENV === "development" && (
+                <Button
+                  variant="outline"
+                  onClick={clearCache}
+                  title="清除缓存并刷新（调试用）"
+                >
+                  清除缓存
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
       </Card>
