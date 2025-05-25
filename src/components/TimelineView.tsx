@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import TimelineCard, { type TimelineEntry } from "./TimelineCard";
+import PromptTimelineCard from "./PromptTimelineCard";
 import {
   Card,
   CardContent,
@@ -10,75 +10,23 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Plus, MessageCircle } from "lucide-react";
-
-// Mock数据 - 在实际应用中，这将来自API或状态管理
-const mockTimelineData: TimelineEntry[] = [
-  {
-    id: "1",
-    prompt: "请帮我写一个关于人工智能在医疗领域应用的文章摘要",
-    response:
-      "人工智能在医疗领域的应用正在revolutionizing传统医疗实践。从影像诊断到药物发现，AI技术正在提升诊断精度、降低医疗成本并改善患者体验。机器学习算法可以分析大量医疗数据，识别疾病模式，辅助医生做出更准确的诊断决策...",
-    provider: "OpenAI",
-    model: "gpt-4-turbo",
-    timestamp: new Date(Date.now() - 1000 * 60 * 5), // 5分钟前
-    status: "success",
-    duration: 2340,
-  },
-  {
-    id: "2",
-    prompt: "如何使用React和TypeScript构建一个现代化的Web应用？",
-    response:
-      "构建现代化React+TypeScript应用需要考虑以下几个关键方面：1. 项目结构和工具链设置 2. 类型安全的组件开发 3. 状态管理策略 4. 性能优化技巧...",
-    provider: "Anthropic",
-    model: "claude-3-5-sonnet",
-    timestamp: new Date(Date.now() - 1000 * 60 * 15), // 15分钟前
-    status: "success",
-    duration: 1890,
-  },
-  {
-    id: "3",
-    prompt: "请解释什么是区块链技术，它有哪些实际应用场景？",
-    response:
-      "区块链是一种分布式数据库技术，通过密码学和共识机制确保数据的不可篡改性。主要应用场景包括：加密货币、供应链追溯、数字身份验证、智能合约等。它的核心优势在于去中心化、透明性和安全性...",
-    provider: "Google",
-    model: "gemini-pro",
-    timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30分钟前
-    status: "success",
-    duration: 3120,
-  },
-  {
-    id: "4",
-    prompt: "生成一个创意的产品营销方案，针对年轻人市场",
-    response:
-      "针对Z世代的创意营销策略应该注重社交媒体互动、UGC内容生成、影响者合作以及体验式营销。建议采用短视频平台、虚拟体验、限量版产品和社区建设等方式...",
-    provider: "OpenAI",
-    model: "gpt-4",
-    timestamp: new Date(Date.now() - 1000 * 60 * 45), // 45分钟前
-    status: "success",
-    duration: 2800,
-  },
-  {
-    id: "5",
-    prompt: "设计一个用户友好的移动应用界面，提供最佳的用户体验",
-    response: "",
-    provider: "Anthropic",
-    model: "claude-3-haiku",
-    timestamp: new Date(Date.now() - 1000 * 60 * 2), // 2分钟前
-    status: "pending",
-    duration: undefined,
-  },
-  {
-    id: "6",
-    prompt: "分析当前市场趋势，预测下一年的技术发展方向",
-    response: "无法连接到服务器，请稍后重试。",
-    provider: "Google",
-    model: "gemini-ultra",
-    timestamp: new Date(Date.now() - 1000 * 60 * 8), // 8分钟前
-    status: "error",
-    duration: 5000,
-  },
-];
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  RefreshCw,
+  Plus,
+  MessageCircle,
+  Filter,
+  BarChart3,
+} from "lucide-react";
+import { usePromptStore } from "@/stores/promptStore";
+import { useState, useMemo } from "react";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -95,15 +43,81 @@ interface TimelineViewProps {
   className?: string;
 }
 
+type StatusFilter = "all" | "pending" | "success" | "error" | "cancelled";
+type ProviderFilter = "all" | string;
+
 export default function TimelineView({ className }: TimelineViewProps) {
+  const { entries, isSubmitting } = usePromptStore();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
+
+  // 获取所有提供商列表
+  const allProviders = useMemo(() => {
+    const providers = new Set<string>();
+    entries.forEach((entry) => {
+      entry.providers.forEach((provider) => providers.add(provider));
+    });
+    return Array.from(providers);
+  }, [entries]);
+
+  // 过滤条目
+  const filteredEntries = useMemo(() => {
+    return entries.filter((entry) => {
+      // 状态过滤
+      if (statusFilter !== "all") {
+        const overallStatus =
+          entry.status === "pending" ||
+          entry.responses.some((r) => r.status === "streaming")
+            ? "pending"
+            : entry.responses.some((r) => r.status === "success")
+            ? "success"
+            : entry.responses.every((r) => r.status === "cancelled")
+            ? "cancelled"
+            : "error";
+
+        if (overallStatus !== statusFilter) return false;
+      }
+
+      // 提供商过滤
+      if (providerFilter !== "all") {
+        if (!entry.providers.includes(providerFilter)) return false;
+      }
+
+      return true;
+    });
+  }, [entries, statusFilter, providerFilter]);
+
+  // 统计信息
+  const stats = useMemo(() => {
+    const total = entries.length;
+    const pending = entries.filter(
+      (entry) =>
+        entry.status === "pending" ||
+        entry.responses.some((r) => r.status === "streaming")
+    ).length;
+    const completed = entries.filter((entry) =>
+      entry.responses.some((r) => r.status === "success")
+    ).length;
+    const errors = entries.filter(
+      (entry) =>
+        entry.responses.some((r) => r.status === "error") &&
+        !entry.responses.some((r) => r.status === "success")
+    ).length;
+
+    return { total, pending, completed, errors };
+  }, [entries]);
+
   const handleRefresh = () => {
-    // TODO: 实现刷新功能
-    console.log("刷新时间轴数据");
+    window.location.reload();
   };
 
   const handleNewPrompt = () => {
-    // TODO: 跳转到新提示词页面或打开模态框
-    console.log("创建新提示词");
+    window.location.href = "/test-form";
+  };
+
+  const handleClearFilters = () => {
+    setStatusFilter("all");
+    setProviderFilter("all");
   };
 
   return (
@@ -113,7 +127,10 @@ export default function TimelineView({ className }: TimelineViewProps) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>提示词时间轴</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                AI 响应时间轴
+              </CardTitle>
               <CardDescription>
                 查看所有AI对话历史，支持多提供商和模型比较
               </CardDescription>
@@ -129,21 +146,110 @@ export default function TimelineView({ className }: TimelineViewProps) {
               </Button>
             </div>
           </div>
+
+          {/* 统计信息 */}
+          {entries.length > 0 && (
+            <div className="flex gap-4 pt-4 border-t">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">总计: {stats.total}</Badge>
+                <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                  进行中: {stats.pending}
+                </Badge>
+                <Badge variant="outline" className="bg-green-50 text-green-700">
+                  已完成: {stats.completed}
+                </Badge>
+                <Badge variant="outline" className="bg-red-50 text-red-700">
+                  错误: {stats.errors}
+                </Badge>
+              </div>
+            </div>
+          )}
         </CardHeader>
+
+        {/* 过滤器 */}
+        {entries.length > 0 && (
+          <CardContent className="pt-0">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4" />
+                <span className="text-sm font-medium">过滤:</span>
+              </div>
+
+              <Select
+                value={statusFilter}
+                onValueChange={(value: StatusFilter) => setStatusFilter(value)}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">所有状态</SelectItem>
+                  <SelectItem value="pending">进行中</SelectItem>
+                  <SelectItem value="success">已完成</SelectItem>
+                  <SelectItem value="error">错误</SelectItem>
+                  <SelectItem value="cancelled">已取消</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={providerFilter}
+                onValueChange={(value: ProviderFilter) =>
+                  setProviderFilter(value)
+                }
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="提供商" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">所有提供商</SelectItem>
+                  {allProviders.map((provider) => (
+                    <SelectItem key={provider} value={provider}>
+                      {provider}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {(statusFilter !== "all" || providerFilter !== "all") && (
+                <Button variant="ghost" size="sm" onClick={handleClearFilters}>
+                  清除过滤器
+                </Button>
+              )}
+
+              <div className="ml-auto text-sm text-muted-foreground">
+                显示 {filteredEntries.length} / {entries.length} 项
+              </div>
+            </div>
+          </CardContent>
+        )}
       </Card>
 
       {/* 时间轴网格 */}
-      {mockTimelineData.length === 0 ? (
+      {filteredEntries.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="text-muted-foreground text-center">
               <MessageCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <h3 className="text-lg font-medium mb-2">还没有对话记录</h3>
-              <p className="text-sm mb-4">开始您的第一次AI对话吧！</p>
-              <Button onClick={handleNewPrompt}>
-                <Plus className="w-4 h-4 mr-2" />
-                创建新对话
-              </Button>
+              {entries.length === 0 ? (
+                <>
+                  <h3 className="text-lg font-medium mb-2">还没有对话记录</h3>
+                  <p className="text-sm mb-4">开始您的第一次AI对话吧！</p>
+                  <Button onClick={handleNewPrompt}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    创建新对话
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-medium mb-2">
+                    没有符合条件的记录
+                  </h3>
+                  <p className="text-sm mb-4">尝试调整过滤条件</p>
+                  <Button variant="outline" onClick={handleClearFilters}>
+                    清除过滤器
+                  </Button>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -152,10 +258,10 @@ export default function TimelineView({ className }: TimelineViewProps) {
           initial="hidden"
           animate="visible"
           variants={containerVariants}
-          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4"
         >
-          {mockTimelineData.map((entry, index) => (
-            <TimelineCard key={entry.id} entry={entry} index={index} />
+          {filteredEntries.map((entry, index) => (
+            <PromptTimelineCard key={entry.id} entry={entry} index={index} />
           ))}
         </motion.div>
       )}

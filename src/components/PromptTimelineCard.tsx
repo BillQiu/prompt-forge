@@ -17,11 +17,17 @@ import {
   Copy,
   RotateCcw,
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  BarChart3,
+  Award,
+  TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { PromptEntry, PromptResponse } from "@/stores/promptStore";
 import { usePromptStore } from "@/stores/promptStore";
+import { useState, useMemo } from "react";
 
 interface PromptTimelineCardProps {
   entry: PromptEntry;
@@ -58,6 +64,9 @@ export default function PromptTimelineCard({
   entry,
   index = 0,
 }: PromptTimelineCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
+
   const formatTime = (date: Date) => {
     return new Intl.DateTimeFormat("zh-CN", {
       hour: "2-digit",
@@ -141,6 +150,52 @@ export default function PromptTimelineCard({
       ? "cancelled"
       : "error";
 
+  // 性能统计
+  const performanceStats = useMemo(() => {
+    const completedResponses = entry.responses.filter(
+      (r) => r.status === "success" && r.duration
+    );
+    if (completedResponses.length === 0) return null;
+
+    const durations = completedResponses.map((r) => r.duration!);
+    const avgDuration =
+      durations.reduce((sum, d) => sum + d, 0) / durations.length;
+    const fastestDuration = Math.min(...durations);
+    const slowestDuration = Math.max(...durations);
+    const fastestProvider = completedResponses.find(
+      (r) => r.duration === fastestDuration
+    );
+
+    return {
+      avgDuration,
+      fastestDuration,
+      slowestDuration,
+      fastestProvider: fastestProvider?.providerId,
+      totalCompleted: completedResponses.length,
+      totalRequested: entry.responses.length,
+    };
+  }, [entry.responses]);
+
+  // 响应长度统计
+  const responseStats = useMemo(() => {
+    const successfulResponses = entry.responses.filter(
+      (r) => r.status === "success" && r.response
+    );
+    if (successfulResponses.length === 0) return null;
+
+    const lengths = successfulResponses.map((r) => r.response.length);
+    const avgLength = lengths.reduce((sum, l) => sum + l, 0) / lengths.length;
+    const longestLength = Math.max(...lengths);
+    const shortestLength = Math.min(...lengths);
+
+    return {
+      avgLength: Math.round(avgLength),
+      longestLength,
+      shortestLength,
+      responses: successfulResponses.length,
+    };
+  }, [entry.responses]);
+
   return (
     <motion.div
       custom={index}
@@ -197,11 +252,77 @@ export default function PromptTimelineCard({
         </CardHeader>
 
         <CardContent className="flex-1 flex flex-col space-y-3">
+          {/* 性能统计 */}
+          {performanceStats && (
+            <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-medium">
+                <BarChart3 className="w-3 h-3" />
+                性能概览
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex items-center gap-1">
+                  <Award className="w-3 h-3 text-green-600" />
+                  <span>
+                    最快: {formatDuration(performanceStats.fastestDuration)}
+                  </span>
+                  {performanceStats.fastestProvider && (
+                    <Badge variant="outline" className="text-[10px] px-1 py-0">
+                      {performanceStats.fastestProvider}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3 text-blue-600" />
+                  <span>
+                    平均: {formatDuration(performanceStats.avgDuration)}
+                  </span>
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {performanceStats.totalCompleted}/
+                {performanceStats.totalRequested} 完成
+                {responseStats && (
+                  <span className="ml-2">
+                    平均 {responseStats.avgLength} 字符
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* 响应列表 */}
           <div className="space-y-2 flex-1">
-            {entry.responses.map((response) => (
-              <ResponseItem key={response.id} response={response} />
-            ))}
+            {isExpanded
+              ? entry.responses.map((response) => (
+                  <ResponseItem key={response.id} response={response} />
+                ))
+              : entry.responses
+                  .slice(0, 2)
+                  .map((response) => (
+                    <ResponseItem key={response.id} response={response} />
+                  ))}
+
+            {/* 展开/收起按钮 */}
+            {entry.responses.length > 2 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="w-full h-8 text-xs"
+              >
+                {isExpanded ? (
+                  <>
+                    <ChevronUp className="w-3 h-3 mr-1" />
+                    收起 ({entry.responses.length - 2} 个响应)
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3 h-3 mr-1" />
+                    展开查看 {entry.responses.length - 2} 个响应
+                  </>
+                )}
+              </Button>
+            )}
           </div>
 
           {/* 底部信息 */}
@@ -289,6 +410,50 @@ function ResponseItem({ response }: { response: PromptResponse }) {
     }
   };
 
+  // 获取性能等级
+  const getPerformanceLevel = (duration: number) => {
+    if (duration < 1000)
+      return { level: "excellent", color: "text-green-600", label: "优秀" };
+    if (duration < 3000)
+      return { level: "good", color: "text-blue-600", label: "良好" };
+    if (duration < 5000)
+      return { level: "average", color: "text-yellow-600", label: "一般" };
+    return { level: "slow", color: "text-red-600", label: "较慢" };
+  };
+
+  const performanceLevel = response.duration
+    ? getPerformanceLevel(response.duration)
+    : null;
+
+  // 获取错误类型
+  const getErrorCategory = (error: string) => {
+    if (error.includes("API密钥") || error.includes("API key")) {
+      return { category: "auth", icon: "🔑", title: "认证错误" };
+    }
+    if (
+      error.includes("网络") ||
+      error.includes("network") ||
+      error.includes("timeout")
+    ) {
+      return { category: "network", icon: "🌐", title: "网络错误" };
+    }
+    if (
+      error.includes("频率") ||
+      error.includes("rate") ||
+      error.includes("quota")
+    ) {
+      return { category: "rate", icon: "⏱️", title: "限额错误" };
+    }
+    if (error.includes("模型") || error.includes("model")) {
+      return { category: "model", icon: "🤖", title: "模型错误" };
+    }
+    return { category: "other", icon: "❌", title: "其他错误" };
+  };
+
+  const errorCategory = response.error
+    ? getErrorCategory(response.error)
+    : null;
+
   return (
     <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
       <div className="flex items-center justify-between">
@@ -303,11 +468,30 @@ function ResponseItem({ response }: { response: PromptResponse }) {
               正在生成...
             </span>
           )}
+          {/* 性能等级指示器 */}
+          {performanceLevel && response.status === "success" && (
+            <Badge
+              variant="outline"
+              className={`text-[10px] px-1 py-0 ${performanceLevel.color}`}
+            >
+              {performanceLevel.label}
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {response.duration && (
-            <span className="text-xs text-muted-foreground">
+            <span
+              className={`text-xs ${
+                performanceLevel?.color || "text-muted-foreground"
+              }`}
+            >
               {formatDuration(response.duration)}
+            </span>
+          )}
+          {/* 响应长度 */}
+          {response.status === "success" && response.response && (
+            <span className="text-xs text-muted-foreground">
+              {response.response.length}字
             </span>
           )}
           {/* 取消按钮 */}
@@ -368,24 +552,45 @@ function ResponseItem({ response }: { response: PromptResponse }) {
       )}
 
       {/* 错误状态 */}
-      {response.status === "error" && response.error && (
-        <div className="text-xs space-y-1">
-          <div className="text-red-600">错误: {response.error}</div>
-          {response.error.includes("API密钥") && (
-            <div className="text-muted-foreground">
-              💡 建议: 请在设置中检查您的API密钥
-            </div>
-          )}
-          {response.error.includes("网络") && (
-            <div className="text-muted-foreground">
-              💡 建议: 请检查网络连接或稍后重试
-            </div>
-          )}
-          {response.error.includes("频率") && (
-            <div className="text-muted-foreground">
-              💡 建议: 请稍等片刻再重试
-            </div>
-          )}
+      {response.status === "error" && response.error && errorCategory && (
+        <div className="text-xs space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">{errorCategory.icon}</span>
+            <span className="font-medium text-red-600">
+              {errorCategory.title}
+            </span>
+          </div>
+          <div className="text-red-600 text-[11px] leading-relaxed">
+            {response.error}
+          </div>
+          <div className="bg-red-50 dark:bg-red-900/20 rounded p-2 text-[11px]">
+            {errorCategory.category === "auth" && (
+              <div className="text-muted-foreground">
+                💡 <strong>建议:</strong> 请在设置页面检查并更新您的API密钥
+              </div>
+            )}
+            {errorCategory.category === "network" && (
+              <div className="text-muted-foreground">
+                💡 <strong>建议:</strong> 检查网络连接，稍后重试或联系服务提供商
+              </div>
+            )}
+            {errorCategory.category === "rate" && (
+              <div className="text-muted-foreground">
+                💡 <strong>建议:</strong>{" "}
+                请稍等片刻再重试，或考虑升级您的API计划
+              </div>
+            )}
+            {errorCategory.category === "model" && (
+              <div className="text-muted-foreground">
+                💡 <strong>建议:</strong> 尝试选择其他可用模型或检查模型名称
+              </div>
+            )}
+            {errorCategory.category === "other" && (
+              <div className="text-muted-foreground">
+                💡 <strong>建议:</strong> 请检查请求参数或联系技术支持
+              </div>
+            )}
+          </div>
         </div>
       )}
 
