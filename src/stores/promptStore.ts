@@ -24,11 +24,12 @@ export interface PromptResponse {
   providerId: string;
   model: string;
   response: string;
-  status: "pending" | "success" | "error" | "streaming";
+  status: "pending" | "success" | "error" | "streaming" | "cancelled";
   timestamp: Date;
   duration?: number;
   error?: string;
   isStreaming?: boolean;
+  abortController?: AbortController;
 }
 
 interface PromptStore {
@@ -50,6 +51,8 @@ interface PromptStore {
   ) => void;
 
   appendStreamContent: (responseId: string, content: string) => void;
+
+  cancelResponse: (responseId: string) => void;
 
   clearHistory: () => void;
 
@@ -99,6 +102,7 @@ export const usePromptStore = create<PromptStore>()(
             const responseId = crypto.randomUUID();
             const startTime = Date.now();
 
+            const abortController = new AbortController();
             const response: PromptResponse = {
               id: responseId,
               promptId,
@@ -108,6 +112,7 @@ export const usePromptStore = create<PromptStore>()(
               status: enableStreaming ? "streaming" : "pending",
               timestamp: new Date(),
               isStreaming: enableStreaming,
+              abortController,
             };
 
             // 添加到状态
@@ -258,19 +263,42 @@ export const usePromptStore = create<PromptStore>()(
       ) => {
         const reader = stream.getReader();
         let fullContent = "";
+        let isCancelled = false;
+
+        // 检查是否已被取消
+        const checkCancellation = () => {
+          const response = get()
+            .entries.flatMap((e) => e.responses)
+            .find((r) => r.id === responseId);
+          return response?.status === "cancelled";
+        };
 
         try {
           while (true) {
+            // 检查取消状态
+            if (checkCancellation()) {
+              isCancelled = true;
+              break;
+            }
+
             const { done, value } = await reader.read();
 
             if (done) {
               break;
             }
 
+            // 再次检查取消状态
+            if (checkCancellation()) {
+              isCancelled = true;
+              break;
+            }
+
             if (value.content) {
               fullContent += value.content;
-              // 实时更新UI
-              get().appendStreamContent(responseId, value.content);
+              // 使用requestAnimationFrame确保UI更新不阻塞
+              requestAnimationFrame(() => {
+                get().appendStreamContent(responseId, value.content);
+              });
             }
 
             if (value.isComplete) {
@@ -284,19 +312,41 @@ export const usePromptStore = create<PromptStore>()(
               break;
             }
           }
+
+          // 如果被取消，不更新为成功状态
+          if (isCancelled) {
+            const duration = Date.now() - startTime;
+            get().updateResponse(responseId, {
+              status: "cancelled",
+              duration,
+              isStreaming: false,
+            });
+          }
         } catch (error) {
           const duration = Date.now() - startTime;
-          const errorMessage =
-            error instanceof Error ? error.message : "Stream error";
+          let errorMessage = "Stream error";
+
+          if (error instanceof Error) {
+            if (error.name === "AbortError") {
+              errorMessage = "请求已取消";
+            } else {
+              errorMessage = error.message;
+            }
+          }
 
           get().updateResponse(responseId, {
-            status: "error",
+            status: isCancelled ? "cancelled" : "error",
             error: errorMessage,
             duration,
             isStreaming: false,
           });
         } finally {
-          reader.releaseLock();
+          // 确保资源清理
+          try {
+            reader.releaseLock();
+          } catch (e) {
+            console.warn("Failed to release stream reader:", e);
+          }
         }
       },
 
@@ -321,6 +371,24 @@ export const usePromptStore = create<PromptStore>()(
             responses: entry.responses.map((response) =>
               response.id === responseId
                 ? { ...response, response: response.response + content }
+                : response
+            ),
+          }));
+          return { entries: updatedEntries };
+        });
+      },
+
+      cancelResponse: (responseId) => {
+        set((state) => {
+          const updatedEntries = state.entries.map((entry) => ({
+            ...entry,
+            responses: entry.responses.map((response) =>
+              response.id === responseId
+                ? {
+                    ...response,
+                    status: "cancelled" as const,
+                    isStreaming: false,
+                  }
                 : response
             ),
           }));

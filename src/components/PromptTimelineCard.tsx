@@ -80,6 +80,8 @@ export default function PromptTimelineCard({
         return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
       case "pending":
         return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+      case "cancelled":
+        return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300";
       default:
         return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
     }
@@ -135,6 +137,8 @@ export default function PromptTimelineCard({
       ? "pending"
       : entry.responses.some((r) => r.status === "success")
       ? "success"
+      : entry.responses.every((r) => r.status === "cancelled")
+      ? "cancelled"
       : "error";
 
   return (
@@ -161,6 +165,8 @@ export default function PromptTimelineCard({
                   ? "处理中"
                   : overallStatus === "success"
                   ? "完成"
+                  : overallStatus === "cancelled"
+                  ? "已取消"
                   : "错误"}
               </Badge>
             </div>
@@ -233,6 +239,8 @@ function ResponseItem({ response }: { response: PromptResponse }) {
         return (
           <div className="w-3 h-3 rounded-full bg-blue-400 animate-pulse" />
         );
+      case "cancelled":
+        return <AlertCircle className="w-3 h-3 text-gray-600" />;
       default:
         return null;
     }
@@ -248,6 +256,8 @@ function ResponseItem({ response }: { response: PromptResponse }) {
         return "等待中";
       case "streaming":
         return isStreaming ? "流式生成中..." : "流式完成";
+      case "cancelled":
+        return "已取消";
       default:
         return status;
     }
@@ -265,6 +275,16 @@ function ResponseItem({ response }: { response: PromptResponse }) {
       toast.error("复制失败", {
         description: "无法复制响应内容",
         duration: 3000,
+      });
+    }
+  };
+
+  const handleCancel = () => {
+    if (response.status === "streaming" && response.isStreaming) {
+      usePromptStore.getState().cancelResponse(response.id);
+      toast.info("正在取消响应", {
+        description: "流式响应将在下一个数据块后停止",
+        duration: 2000,
       });
     }
   };
@@ -290,8 +310,22 @@ function ResponseItem({ response }: { response: PromptResponse }) {
               {formatDuration(response.duration)}
             </span>
           )}
+          {/* 取消按钮 */}
+          {response.status === "streaming" && response.isStreaming && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCancel}
+              className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
+              title="取消响应"
+            >
+              <AlertCircle className="w-3 h-3" />
+            </Button>
+          )}
+          {/* 复制按钮 */}
           {(response.status === "success" ||
-            (response.status === "streaming" && response.response)) && (
+            (response.status === "streaming" && response.response) ||
+            (response.status === "cancelled" && response.response)) && (
             <Button
               variant="ghost"
               size="sm"
@@ -306,17 +340,29 @@ function ResponseItem({ response }: { response: PromptResponse }) {
 
       {/* 成功状态：显示完整响应 */}
       {response.status === "success" && response.response && (
-        <div className="text-xs text-foreground whitespace-pre-wrap">
+        <div className="text-xs text-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
           {response.response}
         </div>
       )}
 
       {/* 流式状态：显示当前累积的响应，带有实时更新效果 */}
       {response.status === "streaming" && (
-        <div className="text-xs text-foreground whitespace-pre-wrap">
+        <div className="text-xs text-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
           {response.response}
           {response.isStreaming && (
             <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-1" />
+          )}
+        </div>
+      )}
+
+      {/* 取消状态：显示已取消的部分响应 */}
+      {response.status === "cancelled" && (
+        <div className="text-xs space-y-1">
+          <div className="text-gray-600">已取消</div>
+          {response.response && (
+            <div className="text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto opacity-75">
+              {response.response}
+            </div>
           )}
         </div>
       )}
