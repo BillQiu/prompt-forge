@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import PromptInputForm from "@/components/PromptInputForm";
 import PromptTimelineCard from "@/components/PromptTimelineCard";
@@ -11,6 +12,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { RefreshCw, Trash2, MessageCircle } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { usePromptStore } from "@/stores/promptStore";
@@ -29,6 +40,7 @@ const containerVariants = {
 export default function TestFormPage() {
   const { entries, isSubmitting, submitPrompt, clearHistory } =
     usePromptStore();
+  const [showClearDialog, setShowClearDialog] = useState(false);
 
   const handleSubmit = async (data: any) => {
     try {
@@ -43,9 +55,12 @@ export default function TestFormPage() {
   };
 
   const handleClearHistory = () => {
-    if (confirm("确定要清除所有历史记录吗？")) {
-      clearHistory();
-    }
+    setShowClearDialog(true);
+  };
+
+  const confirmClearHistory = () => {
+    clearHistory();
+    setShowClearDialog(false);
   };
 
   return (
@@ -132,6 +147,24 @@ export default function TestFormPage() {
           </Card>
         </div>
       </div>
+
+      {/* Alert Dialog for Clear History Confirmation */}
+      <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认清除历史记录</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要清除所有历史记录吗？此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmClearHistory}>
+              确认清除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

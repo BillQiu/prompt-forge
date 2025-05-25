@@ -25,6 +25,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 
 // API 密钥表单验证 schema
 const apiKeySchema = z.object({
@@ -51,6 +62,8 @@ export default function ApiKeyManager() {
   const [storedKeys, setStoredKeys] = useState<StoredApiKey[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showKey, setShowKey] = useState<{ [keyId: string]: boolean }>({});
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [keyToDelete, setKeyToDelete] = useState<string | null>(null);
 
   const { providers, setApiKeyStored } = useUserSettingsStore();
 
@@ -163,25 +176,35 @@ export default function ApiKeyManager() {
   };
 
   const handleDeleteKey = async (keyId: string) => {
-    if (!confirm("确定要删除这个 API 密钥吗？此操作不可撤销。")) {
-      return;
-    }
+    setKeyToDelete(keyId);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteKey = async () => {
+    if (!keyToDelete) return;
 
     try {
-      const keyToDelete = storedKeys.find((k) => k.id === keyId);
-      if (keyToDelete) {
+      const keyToDeleteObj = storedKeys.find((k) => k.id === keyToDelete);
+      if (keyToDeleteObj) {
         // 从 IndexedDB 删除
-        await dbHelpers.deleteApiKey(keyToDelete.providerId);
+        await dbHelpers.deleteApiKey(keyToDeleteObj.providerId);
 
         // 更新状态
-        setApiKeyStored(keyToDelete.providerId, false);
-        setStoredKeys((prev) => prev.filter((k) => k.id !== keyId));
+        setApiKeyStored(keyToDeleteObj.providerId, false);
+        setStoredKeys((prev) => prev.filter((k) => k.id !== keyToDelete));
 
-        console.log("✅ API key deleted successfully");
+        toast.success("API 密钥已删除", {
+          description: "密钥已成功从您的设备中移除",
+        });
       }
     } catch (error) {
       console.error("Failed to delete API key:", error);
-      alert("删除 API 密钥时出错");
+      toast.error("删除 API 密钥时出错", {
+        description: "无法删除密钥，请稍后重试",
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+      setKeyToDelete(null);
     }
   };
 
@@ -407,6 +430,24 @@ export default function ApiKeyManager() {
           </ul>
         </CardContent>
       </Card>
+
+      {/* 删除确认对话框 */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除这个 API 密钥吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteKey}>
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
