@@ -119,6 +119,49 @@ const initialState: UserSettingsState = {
       enabled: true,
       apiKeyStored: false,
       models: [
+        // GPT-4.1 系列 - 最新模型
+        {
+          id: "gpt-4.1",
+          name: "GPT-4.1",
+          enabled: true,
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
+        },
+        {
+          id: "gpt-4.1-mini",
+          name: "GPT-4.1 Mini",
+          enabled: true,
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
+        },
+        {
+          id: "gpt-4.1-nano",
+          name: "GPT-4.1 Nano",
+          enabled: true,
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
+        },
+        // 推理模型系列
+        {
+          id: "o3",
+          name: "OpenAI o3",
+          enabled: true,
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
+        },
+        {
+          id: "o4-mini",
+          name: "OpenAI o4-mini",
+          enabled: true,
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
+        },
+        // GPT-4o 系列
         {
           id: "gpt-4o",
           name: "GPT-4o",
@@ -135,6 +178,15 @@ const initialState: UserSettingsState = {
           maxTokens: 4096,
           topP: 1,
         },
+        // 图像生成模型
+        {
+          id: "gpt-image-1",
+          name: "GPT Image 1",
+          enabled: true,
+          quality: "standard",
+          style: "vivid",
+          size: "1024x1024",
+        },
         {
           id: "dall-e-3",
           name: "DALL-E 3",
@@ -142,6 +194,23 @@ const initialState: UserSettingsState = {
           quality: "standard",
           style: "vivid",
           size: "1024x1024",
+        },
+        {
+          id: "dall-e-2",
+          name: "DALL-E 2",
+          enabled: false, // 上一代模型，默认禁用
+          quality: "standard",
+          style: "vivid",
+          size: "1024x1024",
+        },
+        // 传统模型
+        {
+          id: "gpt-4-turbo",
+          name: "GPT-4 Turbo",
+          enabled: false, // 建议使用 GPT-4.1，默认禁用
+          temperature: 0.7,
+          maxTokens: 4096,
+          topP: 1,
         },
       ],
     },
@@ -353,7 +422,7 @@ const initialState: UserSettingsState = {
   ],
   defaultProviders: ["openai", "google", "anthropic"],
   defaultModels: {
-    openai: ["gpt-4o"],
+    openai: ["gpt-4.1-mini"],
     google: ["gemini-2.0-flash"],
     anthropic: ["claude-3-5-haiku-20241022"],
     ollama: ["llama3.2"],
@@ -531,10 +600,18 @@ export const useUserSettingsStore = create<UserSettingsStore>()(
       }),
       {
         name: "user-settings-store",
-        version: 4,
+        version: 5,
         migrate: (persistedState: any, version: number) => {
           if (version < 4) {
             // 版本4：更新Google Gemini模型列表，与GeminiAdapter.ts保持一致
+            return {
+              ...persistedState,
+              providers: initialState.providers,
+              defaultModels: initialState.defaultModels,
+            };
+          }
+          if (version < 5) {
+            // 版本5：更新OpenAI模型列表，添加GPT-4.1系列和o3/o4-mini推理模型
             return {
               ...persistedState,
               providers: initialState.providers,

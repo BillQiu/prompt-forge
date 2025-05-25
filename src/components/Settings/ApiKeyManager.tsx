@@ -202,6 +202,15 @@ export default function ApiKeyManager() {
       );
 
       setStoredKeys(storedKeysData);
+
+      // 同步 apiKeyStored 状态到 userSettingsStore
+      const storedProviderIds = new Set(apiKeys.map((key) => key.providerName));
+      providers.forEach((provider) => {
+        const hasStoredKey = storedProviderIds.has(provider.id);
+        if (provider.apiKeyStored !== hasStoredKey) {
+          setApiKeyStored(provider.id, hasStoredKey);
+        }
+      });
     } catch (error) {
       console.error("Failed to load stored keys:", error);
       setStoredKeys([]);

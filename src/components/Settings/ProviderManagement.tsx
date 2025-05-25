@@ -9,6 +9,8 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useUserSettingsStore } from "@/stores/userSettingsStore";
 import { Button } from "@/components/ui/button";
@@ -53,7 +55,11 @@ interface ProviderStatus {
   enabledModels: string[];
   loading: boolean;
   error?: string;
+  lastChecked?: number; // 添加缓存时间戳
 }
+
+// 缓存状态的持续时间（5分钟）
+const CACHE_DURATION = 5 * 60 * 1000;
 
 export default function ProviderManagement() {
   const {
@@ -73,6 +79,7 @@ export default function ProviderManagement() {
   const [refreshingProvider, setRefreshingProvider] = useState<string | null>(
     null
   );
+  const [showAllProviders, setShowAllProviders] = useState(false);
 
   // 初始化提供商状态
   useEffect(() => {
@@ -95,8 +102,12 @@ export default function ProviderManagement() {
         loading: false,
       };
 
-      // 如果提供商已配置，尝试获取可用模型
-      if (provider.apiKeyStored) {
+      // 检查缓存的连接状态
+      const cachedStatus = getCachedProviderStatus(provider.id);
+      if (cachedStatus && isCacheValid(cachedStatus.lastChecked)) {
+        Object.assign(status, cachedStatus);
+      } else if (provider.apiKeyStored) {
+        // 只有在缓存无效且已配置API密钥时才检查连接
         await checkProviderConnection(status);
       } else {
         // 未配置时显示默认模型
@@ -107,6 +118,38 @@ export default function ProviderManagement() {
     }
 
     setProviderStatuses(statuses);
+  };
+
+  // 缓存相关函数
+  const getCachedProviderStatus = (
+    providerId: string
+  ): ProviderStatus | null => {
+    try {
+      const cached = localStorage.getItem(`provider_status_${providerId}`);
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const setCachedProviderStatus = (status: ProviderStatus) => {
+    try {
+      const statusWithTimestamp = {
+        ...status,
+        lastChecked: Date.now(),
+      };
+      localStorage.setItem(
+        `provider_status_${status.id}`,
+        JSON.stringify(statusWithTimestamp)
+      );
+    } catch {
+      // 忽略存储错误
+    }
+  };
+
+  const isCacheValid = (lastChecked?: number): boolean => {
+    if (!lastChecked) return false;
+    return Date.now() - lastChecked < CACHE_DURATION;
   };
 
   const checkProviderConnection = async (status: ProviderStatus) => {
@@ -178,6 +221,8 @@ export default function ProviderManagement() {
       status.error = error instanceof Error ? error.message : "连接失败";
     } finally {
       status.loading = false;
+      // 缓存状态
+      setCachedProviderStatus(status);
       setProviderStatuses((prev) =>
         prev.map((s) => (s.id === status.id ? { ...status } : s))
       );
@@ -194,21 +239,26 @@ export default function ProviderManagement() {
   };
 
   const handleProviderToggle = async (providerId: string, enabled: boolean) => {
-    setProviderEnabled(providerId, enabled);
+    try {
+      setProviderEnabled(providerId, enabled);
 
-    if (enabled) {
-      // 启用提供商时，检查连接状态
-      const status = providerStatuses.find((s) => s.id === providerId);
-      if (status && status.configured) {
-        await checkProviderConnection(status);
+      if (enabled) {
+        // 启用提供商时，检查连接状态
+        const status = providerStatuses.find((s) => s.id === providerId);
+        if (status && status.configured) {
+          await checkProviderConnection(status);
+        }
       }
-    }
 
-    toast.success(
-      `${providers.find((p) => p.id === providerId)?.name} ${
-        enabled ? "已启用" : "已禁用"
-      }`
-    );
+      toast.success(
+        `${providers.find((p) => p.id === providerId)?.name} ${
+          enabled ? "已启用" : "已禁用"
+        }`
+      );
+    } catch (error) {
+      console.error("Failed to toggle provider:", error);
+      toast.error("操作失败，请重试");
+    }
   };
 
   const handleModelToggle = (
@@ -216,26 +266,31 @@ export default function ProviderManagement() {
     modelId: string,
     enabled: boolean
   ) => {
-    setModelEnabled(providerId, modelId, enabled);
+    try {
+      setModelEnabled(providerId, modelId, enabled);
 
-    // 更新本地状态
-    setProviderStatuses((prev) =>
-      prev.map((status) => {
-        if (status.id === providerId) {
-          return {
-            ...status,
-            enabledModels: enabled
-              ? [...status.enabledModels, modelId]
-              : status.enabledModels.filter((id) => id !== modelId),
-          };
-        }
-        return status;
-      })
-    );
+      // 更新本地状态
+      setProviderStatuses((prev) =>
+        prev.map((status) => {
+          if (status.id === providerId) {
+            return {
+              ...status,
+              enabledModels: enabled
+                ? [...status.enabledModels, modelId]
+                : status.enabledModels.filter((id) => id !== modelId),
+            };
+          }
+          return status;
+        })
+      );
 
-    const provider = providers.find((p) => p.id === providerId);
-    const model = provider?.models.find((m) => m.id === modelId);
-    toast.success(`${model?.name} ${enabled ? "已启用" : "已禁用"}`);
+      const provider = providers.find((p) => p.id === providerId);
+      const model = provider?.models.find((m) => m.id === modelId);
+      toast.success(`${model?.name} ${enabled ? "已启用" : "已禁用"}`);
+    } catch (error) {
+      console.error("Failed to toggle model:", error);
+      toast.error("操作失败，请重试");
+    }
   };
 
   const toggleProviderExpanded = (providerId: string) => {
@@ -288,175 +343,213 @@ export default function ProviderManagement() {
         </Card>
 
         {/* 提供商列表 */}
-        <div className="grid gap-4">
-          {providerStatuses.map((status) => {
-            const provider = providers.find((p) => p.id === status.id);
-            if (!provider) return null;
+        <div className="space-y-4">
+          {/* 横向网格布局 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {providerStatuses
+              .slice(0, showAllProviders ? undefined : 4)
+              .map((status) => {
+                const provider = providers.find((p) => p.id === status.id);
+                if (!provider) return null;
 
-            const isExpanded = expandedProviders.has(status.id);
+                return (
+                  <Card
+                    key={status.id}
+                    className={cn(
+                      "transition-all duration-200 hover:shadow-md cursor-pointer",
+                      provider.enabled
+                        ? "border-primary/20 bg-primary/5"
+                        : "border-border"
+                    )}
+                    onClick={() => toggleProviderExpanded(status.id)}
+                  >
+                    <CardHeader className="pb-4">
+                      {/* 状态图标和提供商名称 */}
+                      <div className="flex items-center justify-between">
+                        <div
+                          className={cn(
+                            "flex items-center justify-center w-8 h-8 rounded-full",
+                            provider.enabled
+                              ? "bg-primary/10 text-primary"
+                              : "bg-gray-100 text-gray-400 dark:bg-gray-800"
+                          )}
+                        >
+                          {getProviderStatusIcon(status)}
+                        </div>
+                        <Badge
+                          variant={provider.enabled ? "default" : "secondary"}
+                          className="text-xs"
+                        >
+                          {provider.enabled ? "启用" : "禁用"}
+                        </Badge>
+                      </div>
+
+                      {/* 提供商名称 */}
+                      <div>
+                        <CardTitle className="text-base font-semibold">
+                          {provider.name}
+                        </CardTitle>
+                        <CardDescription
+                          className={cn(
+                            "text-xs",
+                            getProviderStatusColor(status)
+                          )}
+                        >
+                          {getProviderStatusText(status)}
+                        </CardDescription>
+                      </div>
+
+                      {/* 模型统计 */}
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>模型: {status.availableModels.length}</span>
+                        <span>启用: {status.enabledModels.length}</span>
+                      </div>
+
+                      {/* 控制按钮 */}
+                      <div className="flex items-center justify-between pt-2">
+                        <div className="flex items-center space-x-1">
+                          {/* 刷新按钮 */}
+                          {status.configured && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRefreshProvider(status.id);
+                                  }}
+                                  disabled={refreshingProvider === status.id}
+                                >
+                                  <RefreshCw
+                                    className={cn(
+                                      "w-3 h-3",
+                                      refreshingProvider === status.id &&
+                                        "animate-spin"
+                                    )}
+                                  />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>刷新</TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+
+                        {/* 启用/禁用开关 */}
+                        <Switch
+                          checked={provider.enabled}
+                          onCheckedChange={(enabled) => {
+                            handleProviderToggle(status.id, enabled);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                    </CardHeader>
+                  </Card>
+                );
+              })}
+          </div>
+
+          {/* 更多按钮 */}
+          {providerStatuses.length > 4 && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                onClick={() => setShowAllProviders(!showAllProviders)}
+              >
+                {showAllProviders ? (
+                  <>
+                    <ChevronUp className="w-4 h-4 mr-2" />
+                    收起
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-4 h-4 mr-2" />
+                    显示更多 ({providerStatuses.length - 4} 个)
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+
+          {/* 展开的提供商详情 */}
+          {Array.from(expandedProviders).map((providerId) => {
+            const status = providerStatuses.find((s) => s.id === providerId);
+            const provider = providers.find((p) => p.id === providerId);
+            if (!status || !provider) return null;
+
             const availableModelConfigs = provider.models.filter((model) =>
               status.availableModels.includes(model.id)
             );
 
             return (
-              <Card key={status.id} className="overflow-hidden">
-                <CardHeader className="pb-3">
+              <Card key={`expanded-${providerId}`} className="mt-4">
+                <CardHeader>
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div
-                        className={cn(
-                          "flex items-center justify-center w-10 h-10 rounded-full",
-                          provider.enabled
-                            ? "bg-primary/10 text-primary"
-                            : "bg-gray-100 text-gray-400 dark:bg-gray-800"
-                        )}
-                      >
-                        {getProviderStatusIcon(status)}
-                      </div>
-                      <div>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          {provider.name}
-                          <Badge
-                            variant={provider.enabled ? "default" : "secondary"}
-                            className="text-xs"
-                          >
-                            {provider.enabled ? "启用" : "禁用"}
-                          </Badge>
-                        </CardTitle>
-                        <CardDescription
-                          className={getProviderStatusColor(status)}
-                        >
-                          {getProviderStatusText(status)}
-                        </CardDescription>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      {/* 刷新按钮 */}
-                      {status.configured && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRefreshProvider(status.id)}
-                              disabled={refreshingProvider === status.id}
-                            >
-                              <RefreshCw
-                                className={cn(
-                                  "w-4 h-4",
-                                  refreshingProvider === status.id &&
-                                    "animate-spin"
-                                )}
-                              />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>刷新连接状态</TooltipContent>
-                        </Tooltip>
-                      )}
-
-                      {/* 启用/禁用开关 */}
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          checked={provider.enabled}
-                          onCheckedChange={(enabled: boolean) =>
-                            handleProviderToggle(status.id, enabled)
-                          }
-                        />
-                        <Label className="text-sm">启用</Label>
-                      </div>
-
-                      {/* 展开/收起按钮 */}
-                      <Collapsible>
-                        <CollapsibleTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => toggleProviderExpanded(status.id)}
-                          >
-                            {isExpanded ? (
-                              <EyeOff className="w-4 h-4" />
-                            ) : (
-                              <Eye className="w-4 h-4" />
-                            )}
-                          </Button>
-                        </CollapsibleTrigger>
-                      </Collapsible>
-                    </div>
-                  </div>
-
-                  {/* 模型统计 */}
-                  <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-2">
-                    <span>可用模型: {status.availableModels.length}</span>
-                    <span>已启用: {status.enabledModels.length}</span>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      {provider.name} 模型配置
+                    </CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => toggleProviderExpanded(providerId)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
                   </div>
                 </CardHeader>
-
-                {/* 模型详情（可展开） */}
-                <Collapsible open={isExpanded}>
-                  <CollapsibleContent>
-                    <CardContent className="pt-0">
-                      {status.configured && status.connected ? (
-                        <div className="space-y-3">
-                          <h4 className="text-sm font-medium">可用模型配置</h4>
-                          <div className="grid gap-2">
-                            {availableModelConfigs.map((model) => (
-                              <div
-                                key={model.id}
-                                className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                              >
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">
-                                      {model.name}
-                                    </span>
-                                    <Badge
-                                      variant="outline"
-                                      className="text-xs"
-                                    >
-                                      {model.id}
-                                    </Badge>
-                                  </div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    {model.temperature &&
-                                      `温度: ${model.temperature} • `}
-                                    {model.maxTokens &&
-                                      `最大令牌: ${model.maxTokens}`}
-                                  </div>
-                                </div>
-                                <Switch
-                                  checked={model.enabled}
-                                  onCheckedChange={(enabled: boolean) =>
-                                    handleModelToggle(
-                                      status.id,
-                                      model.id,
-                                      enabled
-                                    )
-                                  }
-                                />
+                <CardContent>
+                  {status.configured && status.connected ? (
+                    <div className="space-y-3">
+                      <div className="grid gap-2">
+                        {availableModelConfigs.map((model) => (
+                          <div
+                            key={model.id}
+                            className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">
+                                  {model.name}
+                                </span>
+                                <Badge variant="outline" className="text-xs">
+                                  {model.id}
+                                </Badge>
                               </div>
-                            ))}
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {model.temperature &&
+                                  `温度: ${model.temperature} • `}
+                                {model.maxTokens &&
+                                  `最大令牌: ${model.maxTokens}`}
+                              </div>
+                            </div>
+                            <Switch
+                              checked={model.enabled}
+                              onCheckedChange={(enabled: boolean) =>
+                                handleModelToggle(status.id, model.id, enabled)
+                              }
+                            />
                           </div>
-                        </div>
-                      ) : !status.configured ? (
-                        <div className="text-center py-4 text-muted-foreground">
-                          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                          <p>请先在下方的API密钥管理中配置此提供商</p>
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-muted-foreground">
-                          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                          <p>无法连接到此提供商</p>
-                          {status.error && (
-                            <p className="text-xs mt-1 text-red-500">
-                              {status.error}
-                            </p>
-                          )}
-                        </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : !status.configured ? (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p>请先在下方的API密钥管理中配置此提供商</p>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p>无法连接到此提供商</p>
+                      {status.error && (
+                        <p className="text-xs mt-1 text-red-500">
+                          {status.error}
+                        </p>
                       )}
-                    </CardContent>
-                  </CollapsibleContent>
-                </Collapsible>
+                    </div>
+                  )}
+                </CardContent>
               </Card>
             );
           })}
