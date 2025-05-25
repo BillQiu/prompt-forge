@@ -225,6 +225,7 @@ export default function PromptInputForm({
                 control={control}
                 render={({ field }) => (
                   <MultiSelect
+                    allowSearch
                     options={modelOptions}
                     value={field.value}
                     onChange={handleModelChange}
