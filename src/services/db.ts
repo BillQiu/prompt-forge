@@ -144,8 +144,19 @@ export const dbHelpers = {
     status?: Prompt["status"];
     mode?: Prompt["mode"];
     dateRange?: { start: Date; end: Date };
+    providers?: string[];
+    models?: string[];
+    sortOrder?: "newest" | "oldest";
   }): Promise<Prompt[]> {
-    let query = db.prompts.orderBy("timestamp").reverse();
+    let query = db.prompts.orderBy("timestamp");
+
+    // 根据排序顺序决定是否反转
+    if (options?.sortOrder === "oldest") {
+      // 保持正序（最旧的在前）
+    } else {
+      // 默认反序（最新的在前）
+      query = query.reverse();
+    }
 
     if (options?.status) {
       query = query.filter((prompt) => prompt.status === options.status);
@@ -153,6 +164,20 @@ export const dbHelpers = {
 
     if (options?.mode) {
       query = query.filter((prompt) => prompt.mode === options.mode);
+    }
+
+    if (options?.providers && options.providers.length > 0) {
+      query = query.filter((prompt) =>
+        options.providers!.some((provider) =>
+          prompt.providers.includes(provider)
+        )
+      );
+    }
+
+    if (options?.models && options.models.length > 0) {
+      query = query.filter((prompt) =>
+        options.models!.some((model) => prompt.models.includes(model))
+      );
     }
 
     if (options?.dateRange) {
