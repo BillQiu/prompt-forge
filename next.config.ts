@@ -3,7 +3,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // 静态导出配置，用于GitHub Pages部署
   output: "export",
-  basePath: "/prompt-forge",
   trailingSlash: true,
   images: {
     unoptimized: true, // GitHub Pages不支持Next.js图片优化
