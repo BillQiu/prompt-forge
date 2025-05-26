@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "build:ci": "SKIP_ENV_VALIDATION=true DISABLE_ESLINT_PLUGIN=true next build --no-lint",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
