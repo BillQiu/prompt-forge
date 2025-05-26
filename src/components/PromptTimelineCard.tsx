@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import type { PromptEntry, PromptResponse } from "@/stores/promptStore";
 import { usePromptStore } from "@/stores/promptStore";
 import { useState, useMemo } from "react";
+import { useConversationModalStore } from "@/stores/modalStore";
 
 interface PromptTimelineCardProps {
   entry: PromptEntry;
@@ -78,6 +79,7 @@ export default function PromptTimelineCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { deleteEntry } = usePromptStore();
+  const { openModal } = useConversationModalStore();
 
   const formatTime = (date: Date) => {
     return new Intl.DateTimeFormat("zh-CN", {
@@ -232,6 +234,11 @@ export default function PromptTimelineCard({
     };
   }, [entry.responses]);
 
+  // 处理卡片点击
+  const handleCardClick = () => {
+    openModal(entry);
+  };
+
   return (
     <motion.div
       custom={index}
@@ -241,7 +248,10 @@ export default function PromptTimelineCard({
       variants={cardVariants}
       className="h-full"
     >
-      <Card className="h-full flex flex-col hover:shadow-lg transition-shadow duration-200">
+      <Card
+        className="h-full flex flex-col hover:shadow-lg transition-shadow duration-200 cursor-pointer"
+        onClick={handleCardClick}
+      >
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2 flex-1 min-w-0">

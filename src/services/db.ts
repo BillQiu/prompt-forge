@@ -45,13 +45,16 @@ export interface Response {
 export interface ApiKey {
   id?: number;
   providerName: string; // 提供商名称
-  encryptedKey: string; // 加密后的 API 密钥
-  iv: string; // 初始化向量
-  salt: string; // 加密盐值
-  keyId: string; // 密钥标识符
+  apiKey: string; // 明文 API 密钥
   name?: string; // 可选的密钥名称
   createdAt: Date;
   lastUsed?: Date;
+
+  // 废弃的加密字段（为了迁移兼容性保留）
+  encryptedKey?: string; // 旧的加密密钥字段
+  iv?: string; // 旧的初始化向量
+  salt?: string; // 旧的加密盐值
+  keyId?: string; // 旧的密钥标识符
 }
 
 export interface UserSettings {
@@ -80,13 +83,90 @@ export class PromptForgeDB extends Dexie {
       userSettings: "++id, &key, updatedAt",
     });
 
-    // 数据库版本 2 - 添加索引优化（如果需要的话）
-    // this.version(2).stores({
-    //   prompts: '++id, timestamp, promptText, mode, status, [providers+models]',
-    //   responses: '++id, promptId, providerId, model, timestamp, status, [promptId+providerId]',
-    //   apiKeys: '++id, providerName, &keyId, createdAt, lastUsed',
-    //   userSettings: '++id, &key, updatedAt'
-    // })
+    // 数据库版本 2 - 迁移到明文API密钥存储
+    this.version(2)
+      .stores({
+        prompts: "++id, timestamp, promptText, mode, status",
+        responses: "++id, promptId, providerId, model, timestamp, status",
+        apiKeys: "++id, providerName, createdAt, lastUsed", // 移除keyId索引
+        userSettings: "++id, &key, updatedAt",
+      })
+      .upgrade(async (tx) => {
+        console.log(
+          "🔄 Starting API key migration from encrypted to plaintext..."
+        );
+
+        // 获取迁移工具
+        const { decryptApiKeyForMigration, MigrationError } = await import(
+          "./migrationUtils"
+        );
+
+        const apiKeysTable = tx.table("apiKeys");
+        const allKeys = await apiKeysTable.toArray();
+        let migratedCount = 0;
+        let errorCount = 0;
+
+        for (const apiKey of allKeys) {
+          try {
+            // 检查是否已经是明文格式（新添加的记录）
+            if (!apiKey.iv || !apiKey.salt || !apiKey.keyId) {
+              // 已经是新格式，只需要重命名字段
+              if (apiKey.encryptedKey && !apiKey.apiKey) {
+                await apiKeysTable.update(apiKey.id!, {
+                  apiKey: apiKey.encryptedKey,
+                  encryptedKey: undefined,
+                  iv: undefined,
+                  salt: undefined,
+                  keyId: undefined,
+                });
+                migratedCount++;
+              }
+              continue;
+            }
+
+            // 尝试解密旧的加密数据
+            const decryptedKey = await decryptApiKeyForMigration({
+              encryptedData: apiKey.encryptedKey,
+              iv: apiKey.iv,
+              salt: apiKey.salt,
+              keyId: apiKey.keyId,
+            });
+
+            // 更新记录：添加明文密钥，移除加密字段
+            await apiKeysTable.update(apiKey.id!, {
+              apiKey: decryptedKey,
+              encryptedKey: undefined,
+              iv: undefined,
+              salt: undefined,
+              keyId: undefined,
+            });
+
+            migratedCount++;
+            console.log(
+              `✅ Migrated API key for provider: ${apiKey.providerName}`
+            );
+          } catch (error) {
+            errorCount++;
+            console.error(
+              `❌ Failed to migrate API key for ${apiKey.providerName}:`,
+              error
+            );
+
+            // 对于无法解密的密钥，标记为需要重新输入
+            await apiKeysTable.update(apiKey.id!, {
+              apiKey: "[Migration Failed - Please Re-enter]",
+              encryptedKey: undefined,
+              iv: undefined,
+              salt: undefined,
+              keyId: undefined,
+            });
+          }
+        }
+
+        console.log(
+          `🎉 Migration completed! Migrated: ${migratedCount}, Errors: ${errorCount}`
+        );
+      });
   }
 }
 

@@ -1,9 +1,8 @@
 import { dbHelpers } from "./db";
-import { decryptApiKey, EncryptionError } from "./encryption";
 
 /**
  * API 密钥服务
- * 提供从安全存储中检索和管理API密钥的功能
+ * 提供从存储中检索和管理API密钥的功能
  */
 export class ApiKeyService {
   private static instance: ApiKeyService;
@@ -18,14 +17,14 @@ export class ApiKeyService {
   }
 
   /**
-   * 从安全存储中获取指定提供商的API密钥
+   * 从存储中获取指定提供商的API密钥
    * @param providerId 提供商ID（如'openai'）
-   * @returns 解密后的API密钥，如果不存在则返回null
-   * @throws {Error} 当解密失败时抛出错误
+   * @returns API密钥，如果不存在则返回null
+   * @throws {Error} 当获取失败时抛出错误
    */
   async getApiKey(providerId: string): Promise<string | null> {
     try {
-      // 从IndexedDB获取加密的API密钥
+      // 从IndexedDB获取API密钥
       const apiKeyData = await dbHelpers.getApiKey(providerId);
 
       if (!apiKeyData) {
@@ -33,27 +32,21 @@ export class ApiKeyService {
         return null;
       }
 
-      // 解密API密钥
-      const decryptedKey = await decryptApiKey({
-        encryptedData: apiKeyData.encryptedKey,
-        iv: apiKeyData.iv,
-        salt: apiKeyData.salt || "", // 兼容旧数据
-        keyId: apiKeyData.keyId,
-      });
+      // 检查是否为迁移失败的密钥
+      if (apiKeyData.apiKey === "[Migration Failed - Please Re-enter]") {
+        console.warn(
+          `API key for ${providerId} needs to be re-entered after migration`
+        );
+        return null;
+      }
 
       // 更新最后使用时间
       await dbHelpers.updateApiKeyLastUsed(providerId);
 
       console.log(`✅ Successfully retrieved API key for ${providerId}`);
-      return decryptedKey;
+      return apiKeyData.apiKey;
     } catch (error) {
       console.error(`Failed to retrieve API key for ${providerId}:`, error);
-
-      if (error instanceof EncryptionError) {
-        throw new Error(
-          `Failed to decrypt API key for ${providerId}: ${error.message}`
-        );
-      }
 
       throw new Error(
         `Failed to retrieve API key for ${providerId}: ${
@@ -71,7 +64,10 @@ export class ApiKeyService {
   async hasApiKey(providerId: string): Promise<boolean> {
     try {
       const apiKeyData = await dbHelpers.getApiKey(providerId);
-      return !!apiKeyData;
+      return (
+        !!apiKeyData &&
+        apiKeyData.apiKey !== "[Migration Failed - Please Re-enter]"
+      );
     } catch (error) {
       console.error(
         `Failed to check API key existence for ${providerId}:`,
@@ -88,7 +84,12 @@ export class ApiKeyService {
   async getStoredProviders(): Promise<string[]> {
     try {
       const apiKeys = await dbHelpers.getAllApiKeys();
-      return apiKeys.map((key) => key.providerName);
+      return apiKeys
+        .filter(
+          (key) =>
+            key.apiKey && key.apiKey !== "[Migration Failed - Please Re-enter]"
+        )
+        .map((key) => key.providerName);
     } catch (error) {
       console.error("Failed to get stored providers:", error);
       return [];
@@ -127,8 +128,8 @@ export class ApiKeyService {
 
       return {
         success: false,
-        error: "DECRYPTION_FAILED",
-        userMessage: `无法解密 ${providerId.toUpperCase()} API 密钥，请重新设置`,
+        error: "RETRIEVAL_FAILED",
+        userMessage: `无法获取 ${providerId.toUpperCase()} API 密钥，请重新设置`,
       };
     }
   }

@@ -6,13 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeOff, Plus, Trash2, Edit, X } from "lucide-react";
 import { useUserSettingsStore } from "@/stores/userSettingsStore";
-import {
-  encryptApiKey,
-  decryptApiKey,
-  maskApiKey,
-  EncryptionError,
-} from "@/services/encryption";
 import { dbHelpers } from "@/services/db";
+import { maskApiKey } from "@/services/encryption";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -164,42 +159,24 @@ export default function ApiKeyManager() {
       // 从 IndexedDB 加载所有 API 密钥
       const apiKeys = await dbHelpers.getAllApiKeys();
 
-      const storedKeysData: StoredApiKey[] = await Promise.all(
-        apiKeys.map(async (apiKey) => {
-          try {
-            // 解密 API 密钥来生成掩码
-            const decryptedKey = await decryptApiKey({
-              encryptedData: apiKey.encryptedKey,
-              iv: apiKey.iv,
-              salt: apiKey.salt || "", // 兼容旧数据
-              keyId: apiKey.keyId,
-            });
+      const storedKeysData: StoredApiKey[] = apiKeys.map((apiKey) => {
+        // 检查是否有明文密钥字段或者已经改为明文存储
+        const hasPlaintextKey = apiKey.apiKey;
+        const isNewPlaintextFormat = !apiKey.iv || !apiKey.salt; // 新格式没有iv和salt
+        const key = hasPlaintextKey ? apiKey.apiKey : apiKey.encryptedKey || "";
 
-            return {
-              id: apiKey.id?.toString() || "",
-              providerId: apiKey.providerName,
-              name: apiKey.name,
-              maskedKey: maskApiKey(decryptedKey),
-              createdAt: apiKey.createdAt,
-              lastUsed: apiKey.lastUsed,
-            };
-          } catch (error) {
-            console.error(
-              `Failed to decrypt key for ${apiKey.providerName}:`,
-              error
-            );
-            // 返回错误状态的密钥
-            return {
-              id: apiKey.id?.toString() || "",
-              providerId: apiKey.providerName,
-              name: apiKey.name,
-              maskedKey: "[加密错误]",
-              createdAt: apiKey.createdAt,
-              lastUsed: apiKey.lastUsed,
-            };
-          }
-        })
-      );
+        return {
+          id: apiKey.id?.toString() || "",
+          providerId: apiKey.providerName,
+          name: apiKey.name,
+          maskedKey:
+            hasPlaintextKey || isNewPlaintextFormat
+              ? maskApiKey(key)
+              : "[需要迁移]",
+          createdAt: apiKey.createdAt,
+          lastUsed: apiKey.lastUsed,
+        };
+      });
 
       setStoredKeys(storedKeysData);
 
@@ -225,18 +202,9 @@ export default function ApiKeyManager() {
           throw new Error("Ollama 服务器URL是必需的");
         }
 
-        // 对于Ollama，我们存储服务器URL而不是API密钥
-        const encryptedData = await encryptApiKey(
-          data.serverUrl,
-          data.providerId
-        );
-
         await dbHelpers.storeApiKey({
           providerName: data.providerId,
-          encryptedKey: encryptedData.encryptedData,
-          iv: encryptedData.iv,
-          salt: encryptedData.salt,
-          keyId: encryptedData.keyId,
+          apiKey: data.serverUrl,
           name: data.name,
           createdAt: new Date(),
         });
@@ -255,23 +223,17 @@ export default function ApiKeyManager() {
 
         console.log("✅ Ollama server URL saved successfully");
         toast.success("Ollama服务器配置已保存", {
-          description: "服务器URL已成功加密存储",
+          description: "服务器URL已成功保存（明文存储）",
         });
       } else {
-        // 其他提供商：使用加密服务加密 API 密钥
+        // 其他提供商：明文存储API密钥
         if (!data.apiKey) {
           throw new Error("API 密钥是必需的");
         }
 
-        const encryptedData = await encryptApiKey(data.apiKey, data.providerId);
-
-        // 存储到 IndexedDB
         await dbHelpers.storeApiKey({
           providerName: data.providerId,
-          encryptedKey: encryptedData.encryptedData,
-          iv: encryptedData.iv,
-          salt: encryptedData.salt,
-          keyId: encryptedData.keyId,
+          apiKey: data.apiKey,
           name: data.name,
           createdAt: new Date(),
         });
@@ -288,11 +250,11 @@ export default function ApiKeyManager() {
         setStoredKeys((prev) => [...prev, newKey]);
         setApiKeyStored(data.providerId, true);
 
-        console.log("✅ API key added and encrypted successfully");
+        console.log("✅ API key added successfully (plaintext)");
         toast.success("API密钥已保存", {
           description: `${getProviderName(
             data.providerId
-          )} API密钥已成功加密存储`,
+          )} API密钥已成功保存（明文存储）`,
         });
       }
 
@@ -302,9 +264,7 @@ export default function ApiKeyManager() {
       console.error("Failed to add API key:", error);
 
       let errorMessage = "保存配置时出错";
-      if (error instanceof EncryptionError) {
-        errorMessage = "加密配置失败：" + error.message;
-      } else if (error instanceof Error) {
+      if (error instanceof Error) {
         errorMessage = error.message;
       }
 
@@ -1002,7 +962,7 @@ export default function ApiKeyManager() {
           <ul className="text-sm text-slate-700 dark:text-slate-300 space-y-2 pl-1">
             <li className="flex items-start gap-2">
               <span className="text-slate-400">•</span>
-              <span>API 密钥和配置使用 AES-GCM 加密存储在本地浏览器中</span>
+              <span>API 密钥和配置存储在本地浏览器的 IndexedDB 中</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-slate-400">•</span>

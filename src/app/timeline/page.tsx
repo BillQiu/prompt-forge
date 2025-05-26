@@ -2,6 +2,7 @@
 
 import TimelineView from "@/components/TimelineView";
 import Navigation from "@/components/Navigation";
+import ConversationModal from "@/components/ConversationModal";
 
 export default function TimelinePage() {
   return (
@@ -14,6 +15,7 @@ export default function TimelinePage() {
           <TimelineView />
         </div>
       </div>
+      <ConversationModal />
     </div>
   );
 }

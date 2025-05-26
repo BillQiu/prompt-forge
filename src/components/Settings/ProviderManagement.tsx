@@ -44,7 +44,6 @@ import { ClaudeAdapterFactory } from "@/services/llm/adapters/ClaudeAdapter";
 import { OllamaAdapterFactory } from "@/services/llm/adapters/OllamaAdapter";
 import { OpenAIAdapterFactory } from "@/services/llm/adapters/OpenAIAdapter";
 import { dbHelpers } from "@/services/db";
-import { decryptApiKey } from "@/services/encryption";
 
 interface ProviderStatus {
   id: string;
@@ -165,12 +164,13 @@ export default function ProviderManagement() {
       // 获取存储的配置
       const storedKey = await dbHelpers.getApiKey(status.id);
       if (storedKey) {
-        configValue = await decryptApiKey({
-          encryptedData: storedKey.encryptedKey,
-          iv: storedKey.iv,
-          salt: storedKey.salt || "",
-          keyId: storedKey.keyId,
-        });
+        // 检查是否为迁移失败的密钥
+        if (storedKey.apiKey === "[Migration Failed - Please Re-enter]") {
+          configValue = "";
+          status.error = "API密钥需要重新设置";
+        } else {
+          configValue = storedKey.apiKey || "";
+        }
       }
 
       // 创建适配器实例
