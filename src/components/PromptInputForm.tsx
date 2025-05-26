@@ -207,6 +207,7 @@ export default function PromptInputForm({
                     placeholder="选择AI提供商..."
                     disabled={isSubmitting}
                     error={!!errors.providers}
+                    allowSearch={true}
                   />
                 )}
               />
@@ -225,7 +226,6 @@ export default function PromptInputForm({
                 control={control}
                 render={({ field }) => (
                   <MultiSelect
-                    allowSearch
                     options={modelOptions}
                     value={field.value}
                     onChange={handleModelChange}
@@ -236,6 +236,7 @@ export default function PromptInputForm({
                     }
                     disabled={isSubmitting || selectedProviders.length === 0}
                     error={!!errors.models}
+                    allowSearch={true}
                   />
                 )}
               />
