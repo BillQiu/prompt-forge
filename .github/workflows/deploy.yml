@@ -44,7 +44,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build with Next.js
-        run: pnpm run build:ci
+        run: pnpm run build
         env:
           # 完全禁用ESLint和TypeScript检查
           SKIP_ENV_VALIDATION: true
