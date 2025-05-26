@@ -1,5 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, streamText, LanguageModel } from "ai";
+import { z } from "zod";
 import {
   TextGenerationOptions,
   ImageGenerationOptions,
@@ -9,6 +10,7 @@ import {
   ModelInfo,
   LLMAdapterError,
   AdapterFactory,
+  ProviderConfig,
 } from "../BaseAdapter";
 import { AbstractAdapter, StreamHandler } from "./AbstractAdapter";
 import { AdapterRegistry } from "./AdapterRegistry";
@@ -201,6 +203,72 @@ export class OpenAIAdapter extends AbstractAdapter {
 
   constructor() {
     super(OpenAIAdapter.MODELS);
+  }
+
+  /**
+   * 获取OpenAI配置的Zod schema
+   */
+  getConfigSchema(): z.ZodSchema<ProviderConfig> {
+    return z.object({
+      // 文本生成参数
+      textGeneration: z
+        .object({
+          temperature: z.number().min(0).max(2).default(0.7),
+          maxTokens: z.number().min(1).max(4096).default(2048),
+          topP: z.number().min(0).max(1).default(1),
+          frequencyPenalty: z.number().min(-2).max(2).default(0),
+          presencePenalty: z.number().min(-2).max(2).default(0),
+          stop: z.array(z.string()).max(4).default([]),
+        })
+        .default({}),
+
+      // 图像生成参数
+      imageGeneration: z
+        .object({
+          size: z
+            .enum(["256x256", "512x512", "1024x1024", "1792x1024", "1024x1792"])
+            .default("1024x1024"),
+          quality: z.enum(["standard", "hd"]).default("standard"),
+          style: z.enum(["vivid", "natural"]).default("vivid"),
+          numImages: z.number().min(1).max(10).default(1),
+        })
+        .default({}),
+
+      // 高级设置
+      advanced: z
+        .object({
+          timeout: z.number().min(1000).max(300000).default(30000), // 30秒超时
+          retryAttempts: z.number().min(0).max(5).default(3),
+          baseURL: z.string().url().optional(),
+        })
+        .default({}),
+    });
+  }
+
+  /**
+   * 获取默认配置
+   */
+  getDefaultConfig(): ProviderConfig {
+    return {
+      textGeneration: {
+        temperature: 0.7,
+        maxTokens: 2048,
+        topP: 1,
+        frequencyPenalty: 0,
+        presencePenalty: 0,
+        stop: [],
+      },
+      imageGeneration: {
+        size: "1024x1024",
+        quality: "standard",
+        style: "vivid",
+        numImages: 1,
+      },
+      advanced: {
+        timeout: 30000,
+        retryAttempts: 3,
+      },
+    };
   }
 
   /**

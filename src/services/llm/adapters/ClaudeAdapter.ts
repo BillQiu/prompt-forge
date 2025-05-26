@@ -1,5 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText, streamText, LanguageModel } from "ai";
+import { z } from "zod";
 import {
   TextGenerationOptions,
   ImageGenerationOptions,
@@ -9,6 +10,7 @@ import {
   ModelInfo,
   LLMAdapterError,
   AdapterFactory,
+  ProviderConfig,
 } from "../BaseAdapter";
 import {
   AbstractAdapter,
@@ -161,6 +163,52 @@ export class ClaudeAdapter extends AbstractAdapter {
 
   constructor() {
     super(ClaudeAdapter.MODELS);
+  }
+
+  /**
+   * 获取Claude配置的Zod schema
+   */
+  getConfigSchema(): z.ZodSchema<ProviderConfig> {
+    return z.object({
+      // 文本生成参数
+      textGeneration: z
+        .object({
+          temperature: z.number().min(0).max(1).default(0.7),
+          maxTokens: z.number().min(1).max(8192).default(2048),
+          topP: z.number().min(0).max(1).default(1),
+          topK: z.number().min(1).max(200).default(5),
+          stop: z.array(z.string()).max(4).default([]),
+        })
+        .default({}),
+
+      // 高级设置
+      advanced: z
+        .object({
+          timeout: z.number().min(1000).max(300000).default(30000), // 30秒超时
+          retryAttempts: z.number().min(0).max(5).default(3),
+          baseURL: z.string().url().optional(),
+        })
+        .default({}),
+    });
+  }
+
+  /**
+   * 获取默认配置
+   */
+  getDefaultConfig(): ProviderConfig {
+    return {
+      textGeneration: {
+        temperature: 0.7,
+        maxTokens: 2048,
+        topP: 1,
+        topK: 5,
+        stop: [],
+      },
+      advanced: {
+        timeout: 30000,
+        retryAttempts: 3,
+      },
+    };
   }
 
   /**

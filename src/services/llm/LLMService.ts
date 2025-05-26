@@ -8,6 +8,7 @@ import {
   StreamChunk,
   ModelInfo,
   LLMAdapterError,
+  ProviderConfig,
 } from "./BaseAdapter";
 import { AdapterRegistry } from "./adapters/AdapterRegistry";
 import { apiKeyService } from "../apiKeyService";
@@ -140,6 +141,70 @@ export class LLMService {
 
     provider.enabled = enabled;
     this.log(`Provider ${providerId} ${enabled ? "enabled" : "disabled"}`);
+  }
+
+  /**
+   * 加载提供商配置
+   */
+  private async loadProviderConfig(
+    providerId: string
+  ): Promise<ProviderConfig | null> {
+    try {
+      const { dbHelpers } = await import("../db");
+      const configKey = `provider_config_${providerId}`;
+      const savedConfig = await dbHelpers.getSetting(configKey);
+      return savedConfig || null;
+    } catch (error) {
+      this.log(`Failed to load config for provider ${providerId}: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * 合并默认配置和保存的配置
+   */
+  private mergeProviderConfig(
+    adapter: BaseAdapter,
+    savedConfig: ProviderConfig | null,
+    options: TextGenerationOptions | ImageGenerationOptions
+  ): TextGenerationOptions | ImageGenerationOptions {
+    // 如果适配器不支持配置或没有保存的配置，直接返回原始选项
+    if (!adapter.getDefaultConfig || !savedConfig) {
+      return options;
+    }
+
+    try {
+      const defaultConfig = adapter.getDefaultConfig();
+      const mergedConfig = { ...defaultConfig, ...savedConfig };
+
+      // 根据配置类型合并参数
+      if ("stream" in options) {
+        // 文本生成选项
+        const textOptions = options as TextGenerationOptions;
+        const textConfig = mergedConfig.textGeneration || {};
+
+        return {
+          ...textOptions,
+          temperature: textConfig.temperature ?? textOptions.temperature,
+          maxTokens: textConfig.maxTokens ?? textOptions.maxTokens,
+          // 添加其他参数的合并逻辑
+        };
+      } else {
+        // 图像生成选项
+        const imageOptions = options as ImageGenerationOptions;
+        const imageConfig = mergedConfig.imageGeneration || {};
+
+        return {
+          ...imageOptions,
+          size: imageConfig.size ?? imageOptions.size,
+          quality: imageConfig.quality ?? imageOptions.quality,
+          // 添加其他参数的合并逻辑
+        };
+      }
+    } catch (error) {
+      this.log(`Failed to merge provider config: ${error}`);
+      return options;
+    }
   }
 
   /**
@@ -338,10 +403,20 @@ export class LLMService {
     try {
       const adapter = this.getAdapter(providerId);
 
-      this.log(`Generating text with ${providerId} (model: ${options.model})`);
+      // 加载和合并提供商配置
+      const savedConfig = await this.loadProviderConfig(providerId);
+      const mergedOptions = this.mergeProviderConfig(
+        adapter,
+        savedConfig,
+        options
+      ) as TextGenerationOptions;
+
+      this.log(
+        `Generating text with ${providerId} (model: ${mergedOptions.model})`
+      );
 
       const result = await this.executeWithRetry(async () => {
-        return await adapter.generateText(prompt, options, apiKey);
+        return await adapter.generateText(prompt, mergedOptions, apiKey);
       });
 
       const duration = Date.now() - startTime;
@@ -457,10 +532,20 @@ export class LLMService {
         );
       }
 
-      this.log(`Generating image with ${providerId} (model: ${options.model})`);
+      // 加载和合并提供商配置
+      const savedConfig = await this.loadProviderConfig(providerId);
+      const mergedOptions = this.mergeProviderConfig(
+        adapter,
+        savedConfig,
+        options
+      ) as ImageGenerationOptions;
+
+      this.log(
+        `Generating image with ${providerId} (model: ${mergedOptions.model})`
+      );
 
       const result = await this.executeWithRetry(async () => {
-        return await adapter.generateImage!(prompt, options, apiKey);
+        return await adapter.generateImage!(prompt, mergedOptions, apiKey);
       });
 
       const duration = Date.now() - startTime;

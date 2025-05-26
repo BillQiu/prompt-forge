@@ -1,5 +1,6 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText, streamText, LanguageModel } from "ai";
+import { z } from "zod";
 import {
   TextGenerationOptions,
   ImageGenerationOptions,
@@ -9,6 +10,7 @@ import {
   ModelInfo,
   LLMAdapterError,
   AdapterFactory,
+  ProviderConfig,
 } from "../BaseAdapter";
 import { AbstractAdapter, StreamHandler } from "./AbstractAdapter";
 import { AdapterRegistry } from "./AdapterRegistry";
@@ -176,6 +178,96 @@ export class GeminiAdapter extends AbstractAdapter {
 
   constructor() {
     super(GeminiAdapter.MODELS);
+  }
+
+  /**
+   * 获取Gemini配置的Zod schema
+   */
+  getConfigSchema(): z.ZodSchema<ProviderConfig> {
+    return z.object({
+      // 文本生成参数
+      textGeneration: z
+        .object({
+          temperature: z.number().min(0).max(2).default(0.9),
+          maxTokens: z.number().min(1).max(8192).default(2048),
+          topP: z.number().min(0).max(1).default(1),
+          topK: z.number().min(1).max(200).default(40),
+          stop: z.array(z.string()).max(5).default([]),
+        })
+        .default({}),
+
+      // 安全设置
+      safety: z
+        .object({
+          harassment: z
+            .enum([
+              "BLOCK_NONE",
+              "BLOCK_ONLY_HIGH",
+              "BLOCK_MEDIUM_AND_ABOVE",
+              "BLOCK_LOW_AND_ABOVE",
+            ])
+            .default("BLOCK_MEDIUM_AND_ABOVE"),
+          hateSpeech: z
+            .enum([
+              "BLOCK_NONE",
+              "BLOCK_ONLY_HIGH",
+              "BLOCK_MEDIUM_AND_ABOVE",
+              "BLOCK_LOW_AND_ABOVE",
+            ])
+            .default("BLOCK_MEDIUM_AND_ABOVE"),
+          sexuallyExplicit: z
+            .enum([
+              "BLOCK_NONE",
+              "BLOCK_ONLY_HIGH",
+              "BLOCK_MEDIUM_AND_ABOVE",
+              "BLOCK_LOW_AND_ABOVE",
+            ])
+            .default("BLOCK_MEDIUM_AND_ABOVE"),
+          dangerousContent: z
+            .enum([
+              "BLOCK_NONE",
+              "BLOCK_ONLY_HIGH",
+              "BLOCK_MEDIUM_AND_ABOVE",
+              "BLOCK_LOW_AND_ABOVE",
+            ])
+            .default("BLOCK_MEDIUM_AND_ABOVE"),
+        })
+        .default({}),
+
+      // 高级设置
+      advanced: z
+        .object({
+          timeout: z.number().min(1000).max(300000).default(30000), // 30秒超时
+          retryAttempts: z.number().min(0).max(5).default(3),
+          baseURL: z.string().url().optional(),
+        })
+        .default({}),
+    });
+  }
+
+  /**
+   * 获取默认配置
+   */
+  getDefaultConfig(): ProviderConfig {
+    return {
+      textGeneration: {
+        temperature: 0.9,
+        maxTokens: 2048,
+        topP: 1,
+        topK: 40,
+        stop: [],
+      },
+      safety: {
+        harassment: "BLOCK_MEDIUM_AND_ABOVE",
+        hateSpeech: "BLOCK_MEDIUM_AND_ABOVE",
+        sexuallyExplicit: "BLOCK_MEDIUM_AND_ABOVE",
+        dangerousContent: "BLOCK_MEDIUM_AND_ABOVE",
+      },
+      advanced: {
+        timeout: 30000,
+        retryAttempts: 3,
+      },
+    };
   }
 
   /**

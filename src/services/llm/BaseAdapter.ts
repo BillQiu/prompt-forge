@@ -2,6 +2,13 @@
  * 基础适配器接口，定义所有 LLM 提供者适配器的通用契约
  */
 
+import { z } from "zod";
+
+// 提供商配置类型
+export interface ProviderConfig {
+  [key: string]: any;
+}
+
 // 生成选项的基础类型
 export interface BaseGenerationOptions {
   model: string;
@@ -173,6 +180,18 @@ export interface BaseAdapter {
   ):
     | { inputCostPer1KTokens?: number; outputCostPer1KTokens?: number }
     | undefined;
+
+  /**
+   * 获取提供商配置的Zod schema（可选）
+   * @returns 配置schema，如果不支持配置则返回 undefined
+   */
+  getConfigSchema?(): z.ZodSchema<ProviderConfig>;
+
+  /**
+   * 获取默认配置
+   * @returns 默认配置对象
+   */
+  getDefaultConfig?(): ProviderConfig;
 }
 
 /**
