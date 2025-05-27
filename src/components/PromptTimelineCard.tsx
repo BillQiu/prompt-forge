@@ -275,7 +275,10 @@ export default function PromptTimelineCard({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => copyToClipboard(entry.prompt)}
+                onClick={(e) => {
+                  e.stopPropagation(); // 阻止事件冒泡
+                  copyToClipboard(entry.prompt);
+                }}
                 className="h-8 w-8 p-0"
                 title="复制提示词"
               >
@@ -284,7 +287,10 @@ export default function PromptTimelineCard({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleRetry}
+                onClick={(e) => {
+                  e.stopPropagation(); // 阻止事件冒泡
+                  handleRetry();
+                }}
                 className="h-8 w-8 p-0"
                 title="重新提交"
               >
@@ -293,7 +299,10 @@ export default function PromptTimelineCard({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleDelete}
+                onClick={(e) => {
+                  e.stopPropagation(); // 阻止事件冒泡
+                  handleDelete();
+                }}
                 className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                 title="删除对话"
               >
@@ -364,7 +373,10 @@ export default function PromptTimelineCard({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsExpanded(!isExpanded)}
+                onClick={(e) => {
+                  e.stopPropagation(); // 阻止事件冒泡
+                  setIsExpanded(!isExpanded);
+                }}
                 className="w-full h-8 text-xs"
               >
                 {isExpanded ? (
@@ -577,7 +589,10 @@ function ResponseItem({ response }: { response: PromptResponse }) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleCancel}
+              onClick={(e) => {
+                e.stopPropagation(); // 阻止事件冒泡
+                handleCancel();
+              }}
               className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
               title="取消响应"
             >
@@ -591,7 +606,10 @@ function ResponseItem({ response }: { response: PromptResponse }) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={copyResponse}
+              onClick={(e) => {
+                e.stopPropagation(); // 阻止事件冒泡
+                copyResponse();
+              }}
               className="h-6 w-6 p-0"
             >
               <Copy className="w-3 h-3" />
