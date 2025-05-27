@@ -1,6 +1,7 @@
 import ApiKeyManager from "@/components/Settings/ApiKeyManager";
 import ProviderManagement from "@/components/Settings/ProviderManagement";
 import ProviderConfigManager from "@/components/Settings/ProviderConfigManager";
+import CustomModelManager from "@/components/Settings/CustomModelManager";
 import Navigation from "@/components/Navigation";
 
 export default function SettingsPage() {
@@ -14,6 +15,9 @@ export default function SettingsPage() {
 
           {/* 提供商配置管理 */}
           <ProviderConfigManager />
+
+          {/* 自定义模型管理 */}
+          <CustomModelManager />
 
           {/* API密钥管理 */}
           <ApiKeyManager />

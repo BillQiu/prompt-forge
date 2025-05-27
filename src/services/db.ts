@@ -64,6 +64,16 @@ export interface UserSettings {
   updatedAt: Date;
 }
 
+export interface CustomModel {
+  id?: number;
+  name: string; // 自定义模型名称
+  baseUrl: string; // API 基础 URL
+  apiKey: string; // API 密钥（明文存储）
+  providerType: string; // 供应商类型（'openai', 'anthropic' 等）
+  createdAt: Date;
+  updatedAt?: Date;
+}
+
 // 数据库类
 export class PromptForgeDB extends Dexie {
   // 表定义
@@ -71,6 +81,7 @@ export class PromptForgeDB extends Dexie {
   responses!: Table<Response>;
   apiKeys!: Table<ApiKey>;
   userSettings!: Table<UserSettings>;
+  customModels!: Table<CustomModel>;
 
   constructor() {
     super("PromptForgeDB");
@@ -167,6 +178,15 @@ export class PromptForgeDB extends Dexie {
           `🎉 Migration completed! Migrated: ${migratedCount}, Errors: ${errorCount}`
         );
       });
+
+    // 数据库版本 3 - 添加自定义模型表
+    this.version(3).stores({
+      prompts: "++id, timestamp, promptText, mode, status",
+      responses: "++id, promptId, providerId, model, timestamp, status",
+      apiKeys: "++id, providerName, createdAt, lastUsed",
+      userSettings: "++id, &key, updatedAt",
+      customModels: "++id, &name, providerType, createdAt", // name 为唯一索引，providerType 为普通索引
+    });
   }
 }
 
@@ -370,11 +390,12 @@ export const dbHelpers = {
   async clearAllData(): Promise<void> {
     await db.transaction(
       "rw",
-      [db.prompts, db.responses, db.userSettings],
+      [db.prompts, db.responses, db.userSettings, db.customModels],
       async () => {
         await db.prompts.clear();
         await db.responses.clear();
         await db.userSettings.clear();
+        await db.customModels.clear();
         // 注意：API 密钥不会被清除，需要用户手动删除
       }
     );
@@ -408,17 +429,24 @@ export const dbHelpers = {
     totalPrompts: number;
     totalResponses: number;
     totalApiKeys: number;
+    totalCustomModels: number;
     databaseSize: string;
   }> {
-    const [totalPrompts, totalResponses, totalApiKeys] = await Promise.all([
-      db.prompts.count(),
-      db.responses.count(),
-      db.apiKeys.count(),
-    ]);
+    const [totalPrompts, totalResponses, totalApiKeys, totalCustomModels] =
+      await Promise.all([
+        db.prompts.count(),
+        db.responses.count(),
+        db.apiKeys.count(),
+        db.customModels.count(),
+      ]);
 
     // 估算数据库大小（这只是一个粗略估算）
     const estimatedSize =
-      (totalPrompts * 500 + totalResponses * 1000 + totalApiKeys * 200) / 1024;
+      (totalPrompts * 500 +
+        totalResponses * 1000 +
+        totalApiKeys * 200 +
+        totalCustomModels * 300) /
+      1024;
     const databaseSize =
       estimatedSize > 1024
         ? `${(estimatedSize / 1024).toFixed(2)} MB`
@@ -428,8 +456,76 @@ export const dbHelpers = {
       totalPrompts,
       totalResponses,
       totalApiKeys,
+      totalCustomModels,
       databaseSize,
     };
+  },
+
+  // 自定义模型操作
+  async createCustomModel(modelData: Omit<CustomModel, "id">): Promise<number> {
+    // 检查名称是否已存在
+    const existing = await db.customModels
+      .where("name")
+      .equals(modelData.name)
+      .first();
+    if (existing) {
+      throw new Error(`自定义模型名称 "${modelData.name}" 已存在`);
+    }
+
+    return await db.customModels.add({
+      ...modelData,
+      createdAt: new Date(),
+    });
+  },
+
+  async getCustomModel(id: number): Promise<CustomModel | undefined> {
+    return await db.customModels.get(id);
+  },
+
+  async getCustomModelByName(name: string): Promise<CustomModel | undefined> {
+    return await db.customModels.where("name").equals(name).first();
+  },
+
+  async getAllCustomModels(): Promise<CustomModel[]> {
+    return await db.customModels.orderBy("createdAt").reverse().toArray();
+  },
+
+  async getCustomModelsByProvider(
+    providerType: string
+  ): Promise<CustomModel[]> {
+    return await db.customModels
+      .where("providerType")
+      .equals(providerType)
+      .toArray();
+  },
+
+  async updateCustomModel(
+    id: number,
+    updates: Partial<Omit<CustomModel, "id" | "createdAt">>
+  ): Promise<void> {
+    // 如果更新名称，检查是否与其他模型冲突
+    if (updates.name) {
+      const existing = await db.customModels
+        .where("name")
+        .equals(updates.name)
+        .first();
+      if (existing && existing.id !== id) {
+        throw new Error(`自定义模型名称 "${updates.name}" 已存在`);
+      }
+    }
+
+    await db.customModels.update(id, {
+      ...updates,
+      updatedAt: new Date(),
+    });
+  },
+
+  async deleteCustomModel(id: number): Promise<void> {
+    await db.customModels.delete(id);
+  },
+
+  async deleteCustomModelByName(name: string): Promise<void> {
+    await db.customModels.where("name").equals(name).delete();
   },
 };
 

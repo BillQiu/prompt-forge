@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { llmService } from "@/services/llm";
 import { useUserSettingsStore } from "@/stores/userSettingsStore";
+import { useCustomModelStore } from "@/stores/customModelStore";
 import MultiSelect, { MultiSelectOption } from "./MultiSelect";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,8 +66,9 @@ export default function PromptInputForm({
   const [modelOptions, setModelOptions] = useState<MultiSelectOption[]>([]);
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
 
-  // 使用用户设置存储
+  // 使用用户设置存储和自定义模型存储
   const { providers } = useUserSettingsStore();
+  const { customModels, loadCustomModels } = useCustomModelStore();
 
   const {
     register,
@@ -88,7 +90,12 @@ export default function PromptInputForm({
   const prompt = watch("prompt");
   const promptLength = prompt?.length || 0;
 
-  // 初始化提供商选项 - 使用用户设置存储
+  // 加载自定义模型
+  useEffect(() => {
+    loadCustomModels();
+  }, [loadCustomModels]);
+
+  // 初始化提供商选项 - 包含自定义模型提供商
   useEffect(() => {
     try {
       const options: MultiSelectOption[] = providers
@@ -100,13 +107,23 @@ export default function PromptInputForm({
             provider.models.filter((m) => m.enabled).length
           } 个可用模型`,
         }));
+
+      // 如果有自定义模型，添加自定义模型提供商
+      if (customModels.length > 0) {
+        options.push({
+          value: "custom",
+          label: "自定义模型",
+          description: `${customModels.length} 个自定义模型`,
+        });
+      }
+
       setProviderOptions(options);
     } catch (error) {
       console.error("Failed to load providers:", error);
     }
-  }, [providers]);
+  }, [providers, customModels]);
 
-  // 当选择的提供商变化时，更新模型选项 - 使用用户设置存储
+  // 当选择的提供商变化时，更新模型选项 - 包含自定义模型
   useEffect(() => {
     if (selectedProviders.length === 0) {
       setModelOptions([]);
@@ -117,21 +134,33 @@ export default function PromptInputForm({
     try {
       const options: MultiSelectOption[] = [];
 
-      // 从用户设置存储中获取模型
+      // 从用户设置存储中获取内置提供商的模型
       selectedProviders.forEach((providerId) => {
-        const provider = providers.find((p) => p.id === providerId);
-        if (provider && provider.enabled && provider.apiKeyStored) {
-          provider.models
-            .filter((model) => model.enabled)
-            .forEach((model) => {
-              options.push({
-                value: `${providerId}:${model.id}`,
-                label: `${model.name} (${provider.name})`,
-                description: `温度: ${model.temperature || 0.7}, 最大令牌: ${
-                  model.maxTokens || 4096
-                }`,
-              });
+        if (providerId === "custom") {
+          // 处理自定义模型
+          customModels.forEach((customModel) => {
+            options.push({
+              value: `custom:${customModel.id}`,
+              label: `🔧 ${customModel.name}`,
+              description: `自定义模型 (${customModel.providerType} 格式) - ${customModel.baseUrl}`,
             });
+          });
+        } else {
+          // 处理内置提供商的模型
+          const provider = providers.find((p) => p.id === providerId);
+          if (provider && provider.enabled && provider.apiKeyStored) {
+            provider.models
+              .filter((model) => model.enabled)
+              .forEach((model) => {
+                options.push({
+                  value: `${providerId}:${model.id}`,
+                  label: `${model.name} (${provider.name})`,
+                  description: `温度: ${model.temperature || 0.7}, 最大令牌: ${
+                    model.maxTokens || 4096
+                  }`,
+                });
+              });
+          }
         }
       });
 
@@ -149,7 +178,7 @@ export default function PromptInputForm({
       console.error("Failed to load models:", error);
       setModelOptions([]);
     }
-  }, [selectedProviders, providers, setValue, getValues]);
+  }, [selectedProviders, providers, customModels, setValue, getValues]);
 
   const handleProviderChange = (providers: string[]) => {
     setSelectedProviders(providers);

@@ -19,6 +19,7 @@ import "./adapters/OpenAIAdapter";
 import "./adapters/ClaudeAdapter";
 import "./adapters/GeminiAdapter";
 import "./adapters/OllamaAdapter";
+import { CustomModelAdapterFactory } from "./adapters/CustomModelAdapter";
 
 /**
  * 提供者注册信息
@@ -99,6 +100,14 @@ export class LLMService {
           `Provider ${providerId} (${info.name}) registered successfully`
         );
       }
+    }
+
+    // 确保 custom 提供商被注册（用于自定义模型）
+    if (!this.providers.has("custom")) {
+      this.providers.set("custom", {
+        enabled: true,
+      });
+      this.log("Custom model provider registered successfully");
     }
   }
 
@@ -252,6 +261,42 @@ export class LLMService {
   }
 
   /**
+   * 为自定义模型获取适配器实例
+   */
+  async getCustomModelAdapter(customModelId: string): Promise<BaseAdapter> {
+    try {
+      // 动态导入数据库助手
+      const { dbHelpers } = await import("../db");
+
+      // 获取自定义模型配置
+      const customModel = await dbHelpers.getCustomModel(
+        parseInt(customModelId)
+      );
+
+      if (!customModel) {
+        throw new LLMAdapterError(
+          `Custom model with ID ${customModelId} not found`,
+          "MODEL_NOT_FOUND"
+        );
+      }
+
+      // 创建自定义模型适配器
+      const factory = new CustomModelAdapterFactory(customModel);
+      const adapter = factory.createAdapter();
+
+      this.log(`Created custom model adapter for model: ${customModel.name}`);
+      return adapter;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      throw new LLMAdapterError(
+        `Failed to create custom model adapter: ${errorMessage}`,
+        "ADAPTER_CREATION_ERROR"
+      );
+    }
+  }
+
+  /**
    * 获取所有注册的提供者信息
    */
   getProviders(): Array<{
@@ -339,6 +384,11 @@ export class LLMService {
     options: TextGenerationOptions
   ): Promise<ExecutionResult<TextResponse | ReadableStream<StreamChunk>>> {
     try {
+      // 对于自定义模型，直接生成（它们使用自己的API密钥）
+      if (providerId === "custom") {
+        return await this.generateText(providerId, prompt, options, "");
+      }
+
       // 从安全存储中获取API密钥
       const keyResult = await apiKeyService.safeGetApiKey(providerId);
 
@@ -401,10 +451,22 @@ export class LLMService {
     const startTime = Date.now();
 
     try {
-      const adapter = this.getAdapter(providerId);
+      let adapter: BaseAdapter;
 
-      // 加载和合并提供商配置
-      const savedConfig = await this.loadProviderConfig(providerId);
+      // 检查是否是自定义模型请求
+      if (providerId === "custom") {
+        // 从模型ID中提取自定义模型ID
+        const customModelId = options.model.replace("custom-", "");
+        adapter = await this.getCustomModelAdapter(customModelId);
+      } else {
+        adapter = this.getAdapter(providerId);
+      }
+
+      // 加载和合并提供商配置（对于自定义模型，使用默认配置）
+      const savedConfig =
+        providerId === "custom"
+          ? null
+          : await this.loadProviderConfig(providerId);
       const mergedOptions = this.mergeProviderConfig(
         adapter,
         savedConfig,
@@ -416,7 +478,13 @@ export class LLMService {
       );
 
       const result = await this.executeWithRetry(async () => {
-        return await adapter.generateText(prompt, mergedOptions, apiKey);
+        // 对于自定义模型，使用自定义模型的API密钥
+        const effectiveApiKey = providerId === "custom" ? "" : apiKey; // 自定义模型使用自己的API密钥
+        return await adapter.generateText(
+          prompt,
+          mergedOptions,
+          effectiveApiKey
+        );
       });
 
       const duration = Date.now() - startTime;
