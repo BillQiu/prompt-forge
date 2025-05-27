@@ -84,26 +84,90 @@ interface CustomModelWithId {
 const testApiConnection = async (
   baseUrl: string,
   apiKey: string,
-  providerType: string
-): Promise<boolean> => {
+  providerType: string,
+  modelName: string
+): Promise<{ success: boolean; error?: string }> => {
   try {
-    // 基本的连接测试，尝试访问根端点
-    const testUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-    const response = await fetch(testUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      // 设置超时
-      signal: AbortSignal.timeout(10000), // 10秒超时
-    });
+    const normalizedBaseUrl = baseUrl.endsWith("/")
+      ? baseUrl.slice(0, -1)
+      : baseUrl;
 
-    // 接受各种状态码，只要不是网络错误即可
-    return response.status >= 200 && response.status < 600;
+    if (providerType === "openai") {
+      // 测试 OpenAI 格式的 API
+      const testUrl = `${normalizedBaseUrl}/chat/completions`;
+      const response = await fetch(testUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [
+            {
+              role: "user",
+              content: "test",
+            },
+          ],
+          max_tokens: 1,
+          stream: false,
+        }),
+        signal: AbortSignal.timeout(10000), // 10秒超时
+      });
+
+      if (response.status >= 200 && response.status < 500) {
+        return { success: true };
+      } else {
+        const errorText = await response.text().catch(() => "未知错误");
+        return {
+          success: false,
+          error: `OpenAI API 响应错误 (${response.status}): ${errorText}`,
+        };
+      }
+    } else if (providerType === "anthropic") {
+      // 测试 Anthropic 格式的 API
+      const testUrl = `${normalizedBaseUrl}/messages`;
+      const response = await fetch(testUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: modelName,
+          max_tokens: 1,
+          messages: [
+            {
+              role: "user",
+              content: "test",
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(10000), // 10秒超时
+      });
+
+      if (response.status >= 200 && response.status < 500) {
+        return { success: true };
+      } else {
+        const errorText = await response.text().catch(() => "未知错误");
+        return {
+          success: false,
+          error: `Anthropic API 响应错误 (${response.status}): ${errorText}`,
+        };
+      }
+    }
+
+    return { success: false, error: "不支持的供应商类型" };
   } catch (error) {
     console.warn("API connection test failed:", error);
-    return false;
+    if (error instanceof Error) {
+      if (error.name === "AbortError") {
+        return { success: false, error: "连接超时，请检查 URL 是否正确" };
+      }
+      return { success: false, error: `连接失败: ${error.message}` };
+    }
+    return { success: false, error: "连接失败，请检查网络或URL是否正确" };
   }
 };
 
@@ -156,9 +220,10 @@ export default function CustomModelManager() {
       const isValid = await testApiConnection(
         data.baseUrl,
         data.apiKey,
-        data.providerType
+        data.providerType,
+        data.name
       );
-      if (!isValid) {
+      if (!isValid.success) {
         toast.error("API 连接测试失败，请检查 URL 和密钥是否正确");
         return;
       }
@@ -196,9 +261,10 @@ export default function CustomModelManager() {
         const isValid = await testApiConnection(
           data.baseUrl,
           data.apiKey,
-          data.providerType
+          data.providerType,
+          data.name
         );
-        if (!isValid) {
+        if (!isValid.success) {
           toast.error("API 连接测试失败，请检查 URL 和密钥是否正确");
           return;
         }
