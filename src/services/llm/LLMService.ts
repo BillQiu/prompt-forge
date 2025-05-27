@@ -455,8 +455,8 @@ export class LLMService {
 
       // 检查是否是自定义模型请求
       if (providerId === "custom") {
-        // 从模型ID中提取自定义模型ID
-        const customModelId = options.model.replace("custom-", "");
+        // 从模型ID中提取自定义模型ID（格式为 custom:数字ID）
+        const customModelId = options.model.replace("custom:", "");
         adapter = await this.getCustomModelAdapter(customModelId);
       } else {
         adapter = this.getAdapter(providerId);

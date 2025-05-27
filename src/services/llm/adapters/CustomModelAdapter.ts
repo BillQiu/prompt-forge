@@ -29,9 +29,9 @@ export class CustomModelAdapter extends AbstractAdapter {
   private customModel: CustomModel;
 
   constructor(customModel: CustomModel) {
-    // 创建一个动态的模型信息
+    // 创建一个动态的模型信息，使用数据库ID作为模型ID
     const modelInfo: ModelInfo = {
-      id: `custom-${customModel.name}`,
+      id: `custom:${customModel.id}`,
       name: customModel.name,
       description: `Custom model: ${customModel.name} (${customModel.providerType} format)`,
       capabilities: {
@@ -73,8 +73,8 @@ export class CustomModelAdapter extends AbstractAdapter {
   /**
    * 根据 providerType 创建相应的语言模型实例
    */
-  private getLanguageModel(modelId: string): LanguageModel {
-    const { baseUrl, apiKey, providerType } = this.customModel;
+  private getLanguageModel(modelId?: string): LanguageModel {
+    const { baseUrl, apiKey, providerType, name } = this.customModel;
 
     switch (providerType) {
       case "openai":
@@ -82,18 +82,16 @@ export class CustomModelAdapter extends AbstractAdapter {
           baseURL: baseUrl,
           apiKey: apiKey,
         });
-        // 使用自定义模型名称，去掉 "custom-" 前缀
-        const openaiModelName = modelId.replace("custom-", "");
-        return openaiProvider(openaiModelName);
+        // 使用存储的自定义模型名称
+        return openaiProvider(name);
 
       case "anthropic":
         const anthropicProvider = createAnthropic({
           baseURL: baseUrl,
           apiKey: apiKey,
         });
-        // 使用自定义模型名称，去掉 "custom-" 前缀
-        const anthropicModelName = modelId.replace("custom-", "");
-        return anthropicProvider(anthropicModelName);
+        // 使用存储的自定义模型名称
+        return anthropicProvider(name);
 
       default:
         throw new LLMAdapterError(
@@ -105,8 +103,8 @@ export class CustomModelAdapter extends AbstractAdapter {
 
   async validateApiKey(apiKey: string): Promise<boolean> {
     try {
-      // 尝试使用提供的 API 密钥进行简单的验证请求
-      const model = this.getLanguageModel(`custom-${this.customModel.name}`);
+      // 尝试使用自定义模型的API密钥进行简单的验证请求
+      const model = this.getLanguageModel();
 
       await generateText({
         model,
@@ -127,10 +125,15 @@ export class CustomModelAdapter extends AbstractAdapter {
     apiKey: string
   ): Promise<TextResponse | ReadableStream<StreamChunk>> {
     try {
-      this.validateApiKeyPresent(apiKey);
-      this.validateTextGenerationCapability(options.model);
+      // 自定义模型使用存储的API密钥，不需要验证传入的apiKey参数
+      // 规范化模型ID：如果传入的是数字ID，则转换为完整格式
+      const normalizedModelId = options.model.includes(":")
+        ? options.model
+        : `custom:${options.model}`;
 
-      const model = this.getLanguageModel(options.model);
+      this.validateTextGenerationCapability(normalizedModelId);
+
+      const model = this.getLanguageModel();
       const messageBuilder = this.createMessageBuilder();
 
       // 构建消息
@@ -163,7 +166,7 @@ export class CustomModelAdapter extends AbstractAdapter {
 
         return StreamHandler.createTextStream(
           textStream,
-          options.model,
+          normalizedModelId,
           usage,
           finishReason,
           (error) => this.handleError(error)
@@ -175,7 +178,7 @@ export class CustomModelAdapter extends AbstractAdapter {
         return {
           content: result.text,
           metadata: {
-            model: options.model,
+            model: normalizedModelId,
             usage: result.usage
               ? {
                   promptTokens: result.usage.promptTokens,
