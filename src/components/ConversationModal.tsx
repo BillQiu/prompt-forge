@@ -59,7 +59,7 @@ export default function ConversationModal() {
 
   // 计算模态框样式（默认或全屏）
   const modalStyles = cn({
-    "w-full max-w-[90vw] h-[80vh] max-h-[90vh]": !isFullscreen,
+    "w-full max-w-[90vw] h-[85vh] max-h-[90vh]": !isFullscreen,
     "w-[99vw] h-[99vh] max-w-none max-h-none": isFullscreen,
   });
 
@@ -268,7 +268,7 @@ export default function ConversationModal() {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
       <DialogContent className={modalStyles}>
-        <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
+        <DialogHeader className="flex flex-row items-center justify-between border-b pb-2">
           <div className="flex items-center gap-2">
             <DialogTitle className="text-lg">
               <MessageCircle className="inline-block mr-2 h-5 w-5" />
@@ -294,44 +294,51 @@ export default function ConversationModal() {
           </div>
         </DialogHeader>
 
-        {/* 统一输入区域 */}
-        <div className="flex-none p-4 bg-secondary/30 rounded-lg mb-4">
-          <div className="flex flex-col gap-2">
-            <div className="text-sm font-medium">向所有模型发送消息</div>
-            <div className="flex gap-2">
-              <Textarea
-                value={modelInputs["broadcast"] || ""}
-                onChange={(e) => updateInput("broadcast", e.target.value)}
-                placeholder="输入消息将同时发送给所有选中的模型..."
-                className="min-h-[60px] resize-none"
-                disabled={Object.values(isSending).some(Boolean)}
-              />
-              <Button
-                onClick={handleBroadcastMessage}
-                disabled={
-                  !modelInputs["broadcast"]?.trim() ||
-                  Object.values(isSending).some(Boolean)
-                }
-                className="self-end"
-              >
-                {Object.values(isSending).some(Boolean) ? (
-                  <div className="animate-pulse">发送中...</div>
-                ) : (
-                  <>
-                    <Send className="mr-2 h-4 w-4" /> 发送
-                  </>
-                )}
-              </Button>
+        {/* 紧凑的统一输入区域 */}
+        <div className="flex-none bg-secondary/20 rounded-lg mb-1 border border-secondary/30">
+          <div className="flex items-center gap-2 p-2">
+            <div className="text-xs font-medium whitespace-nowrap pl-1">
+              向所有模型:
             </div>
+            <Textarea
+              value={modelInputs["broadcast"] || ""}
+              onChange={(e) => updateInput("broadcast", e.target.value)}
+              placeholder="输入消息将同时发送给所有选中的模型..."
+              className="min-h-[40px] max-h-[80px] resize-none text-sm py-1.5"
+              disabled={Object.values(isSending).some(Boolean)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  handleBroadcastMessage();
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              onClick={handleBroadcastMessage}
+              disabled={
+                !modelInputs["broadcast"]?.trim() ||
+                Object.values(isSending).some(Boolean)
+              }
+              className="flex-shrink-0"
+            >
+              {Object.values(isSending).some(Boolean) ? (
+                <div className="animate-pulse">发送中...</div>
+              ) : (
+                <>
+                  <Send className="mr-1 h-3.5 w-3.5" /> 发送
+                </>
+              )}
+            </Button>
           </div>
         </div>
 
-        {/* 横向滚动的模型对话区域 */}
+        {/* 横向滚动的模型对话区域 - 增加高度占比 */}
         <div className="flex-1 overflow-hidden min-h-0">
           <div
             ref={scrollRef}
             className={cn(
-              "h-full flex gap-4 p-4 overflow-x-auto overflow-y-hidden",
+              "h-full flex gap-3 p-2 overflow-x-auto overflow-y-hidden",
               // 当模型数量少时，居中显示而不是左对齐
               modelConversations.length <= 3 ? "justify-center" : ""
             )}
@@ -345,35 +352,35 @@ export default function ConversationModal() {
                 className="flex-none w-80 h-full"
                 style={{ scrollSnapAlign: "start" }}
               >
-                <Card className="h-full flex flex-col">
-                  {/* 模型头部 */}
-                  <CardHeader className="flex-none border-b py-3">
+                <Card className="h-full flex flex-col shadow-sm">
+                  {/* 模型头部 - 减小头部高度 */}
+                  <CardHeader className="flex-none border-b py-2 px-3">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">
+                      <CardTitle className="text-sm font-medium">
                         {conversation.modelId}
                       </CardTitle>
-                      <Badge variant="secondary" className="text-xs">
+                      <Badge
+                        variant="secondary"
+                        className="text-xs px-1.5 py-0 h-5"
+                      >
                         {conversation.providerId}
                       </Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {conversation.responses.length} 条对话
-                    </div>
                   </CardHeader>
 
-                  {/* 对话历史 - 固定高度，内部滚动 */}
+                  {/* 对话历史 - 增加高度占比 */}
                   <div className="flex-1 min-h-0 flex flex-col">
                     <ScrollArea className="flex-1 px-3">
-                      <div className="space-y-3 py-3">
+                      <div className="space-y-2 py-2">
                         {conversation.responses.map((response, index) => (
                           <div key={index} className="space-y-2">
                             {/* 用户消息 */}
                             <div className="flex justify-end">
-                              <div className="bg-primary text-primary-foreground rounded-lg px-3 py-2 max-w-[85%] break-words">
+                              <div className="bg-primary text-primary-foreground rounded-lg px-3 py-1.5 max-w-[85%] break-words">
                                 <p className="text-xs whitespace-pre-wrap break-words">
                                   {response.prompt}
                                 </p>
-                                <div className="text-xs opacity-70 mt-1">
+                                <div className="text-[10px] opacity-70 mt-1">
                                   {formatTime(response.timestamp)}
                                 </div>
                               </div>
@@ -381,16 +388,16 @@ export default function ConversationModal() {
 
                             {/* AI响应 */}
                             <div className="flex justify-start">
-                              <div className="bg-muted rounded-lg px-3 py-2 max-w-[85%] break-words">
-                                <div className="flex items-center gap-1 mb-2 flex-wrap">
+                              <div className="bg-muted rounded-lg px-3 py-1.5 max-w-[85%] break-words">
+                                <div className="flex items-center gap-1 mb-1 flex-wrap">
                                   <Badge
                                     className={cn(
-                                      "text-xs h-5 flex-shrink-0",
+                                      "text-xs h-4 flex-shrink-0 px-1",
                                       getStatusColor(response.status)
                                     )}
                                   >
                                     {getStatusIcon(response.status)}
-                                    <span className="ml-1">
+                                    <span className="ml-0.5 text-[10px]">
                                       {response.status === "success"
                                         ? "完成"
                                         : response.status === "error"
@@ -401,7 +408,7 @@ export default function ConversationModal() {
                                   {response.duration && (
                                     <Badge
                                       variant="outline"
-                                      className="text-xs h-5 flex-shrink-0"
+                                      className="text-[10px] h-4 flex-shrink-0 px-1"
                                     >
                                       {formatDuration(response.duration)}
                                     </Badge>
@@ -409,12 +416,12 @@ export default function ConversationModal() {
                                   <Button
                                     size="sm"
                                     variant="ghost"
-                                    className="h-5 w-5 p-0 ml-auto flex-shrink-0"
+                                    className="h-4 w-4 p-0 ml-auto flex-shrink-0"
                                     onClick={() =>
                                       copyToClipboard(response.response || "")
                                     }
                                   >
-                                    <Copy className="w-3 h-3" />
+                                    <Copy className="w-2.5 h-2.5" />
                                   </Button>
                                 </div>
                                 {response.response && (
@@ -434,16 +441,16 @@ export default function ConversationModal() {
                       </div>
                     </ScrollArea>
 
-                    {/* 每个模型的输入区域 - 固定在底部 */}
-                    <div className="flex-none p-3 border-t bg-background">
-                      <div className="flex gap-2">
+                    {/* 每个模型的输入区域 - 优化底部布局 */}
+                    <div className="flex-none p-2 border-t bg-background">
+                      <div className="flex gap-1">
                         <Textarea
                           placeholder={`向 ${conversation.modelId} 发送消息...`}
                           value={modelInputs[conversation.modelKey] || ""}
                           onChange={(e) =>
                             updateInput(conversation.modelKey, e.target.value)
                           }
-                          className="flex-1 resize-none min-h-[50px] max-h-[100px] text-sm"
+                          className="flex-1 resize-none min-h-[36px] max-h-[80px] text-xs py-1.5"
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                               e.preventDefault();
@@ -452,7 +459,7 @@ export default function ConversationModal() {
                           }}
                         />
                         <Button
-                          size="sm"
+                          size="icon"
                           onClick={() =>
                             handleSendMessage(conversation.modelKey)
                           }
@@ -460,13 +467,11 @@ export default function ConversationModal() {
                             !modelInputs[conversation.modelKey]?.trim() ||
                             isSending[conversation.modelKey]
                           }
-                          className="self-end flex-shrink-0"
+                          className="self-end flex-shrink-0 h-8 w-8"
+                          title="发送 (Ctrl/Cmd + Enter)"
                         >
                           <Send className="w-3 h-3" />
                         </Button>
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Ctrl/Cmd + Enter 发送
                       </div>
                     </div>
                   </div>
