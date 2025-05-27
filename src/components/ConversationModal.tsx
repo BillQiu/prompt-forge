@@ -41,12 +41,18 @@ export default function ConversationModal() {
   const {
     isOpen,
     isFullscreen,
-    currentConversation,
+    currentConversation: modalConversation,
     closeModal,
     toggleFullscreen,
   } = useConversationModalStore();
 
-  const { submitPrompt } = usePromptStore();
+  const { submitPrompt, entries } = usePromptStore();
+
+  // 从prompt store中获取最新的对话数据
+  const currentConversation = modalConversation
+    ? entries.find((entry) => entry.id === modalConversation.id) ||
+      modalConversation
+    : null;
   const [modelInputs, setModelInputs] = useState<Record<string, string>>({});
   const [isSending, setIsSending] = useState<Record<string, boolean>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -102,11 +108,21 @@ export default function ConversationModal() {
       });
       setIsSending(newSendingState);
 
-      await submitPrompt({
-        prompt: input,
-        providers: currentConversation.providers,
-        models: currentConversation.models,
+      // 为每个模型单独发送，以包含各自的对话历史
+      const sendPromises = currentConversation.models.map(async (modelKey) => {
+        const [providerId] = modelKey.split(":");
+        const contextualPrompt = buildContextualPrompt(modelKey, input);
+
+        return submitPrompt({
+          prompt: contextualPrompt,
+          providers: [providerId],
+          models: [modelKey],
+          continueConversation: currentConversation.id,
+          userMessage: input, // 传递用户的原始输入用于UI显示
+        });
       });
+
+      await Promise.all(sendPromises);
 
       // 清空输入框
       setModelInputs({ ...modelInputs, broadcast: "" });
@@ -120,6 +136,45 @@ export default function ConversationModal() {
     }
   };
 
+  // 构建包含对话历史的完整提示
+  const buildContextualPrompt = (
+    modelKey: string,
+    newMessage: string
+  ): string => {
+    if (!currentConversation) return newMessage;
+
+    const [providerId, modelId] = modelKey.split(":");
+
+    // 获取该模型的对话历史
+    const modelResponses = currentConversation.responses
+      .filter((r) => r.providerId === providerId && r.model === modelId)
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    if (modelResponses.length === 0) {
+      // 如果没有历史记录，返回新消息
+      return newMessage;
+    }
+
+    // 构建对话历史
+    let contextualPrompt = "";
+
+    modelResponses.forEach((response) => {
+      // 添加用户消息
+      const userPrompt = response.prompt || currentConversation.prompt;
+      contextualPrompt += `用户: ${userPrompt}\n\n`;
+
+      // 添加AI响应
+      if (response.response && response.status === "success") {
+        contextualPrompt += `助手: ${response.response}\n\n`;
+      }
+    });
+
+    // 添加新的用户消息
+    contextualPrompt += `用户: ${newMessage}`;
+
+    return contextualPrompt;
+  };
+
   // 发送消息到特定模型
   const handleSendMessage = async (modelKey: string) => {
     const input = modelInputs[modelKey]?.trim();
@@ -130,10 +185,15 @@ export default function ConversationModal() {
     try {
       setIsSending({ ...isSending, [modelKey]: true });
 
+      // 构建包含对话历史的完整提示
+      const contextualPrompt = buildContextualPrompt(modelKey, input);
+
       await submitPrompt({
-        prompt: input,
+        prompt: contextualPrompt,
         providers: [providerId],
         models: [modelKey],
+        continueConversation: currentConversation.id, // 传递对话ID以继续现有对话
+        userMessage: input, // 传递用户的原始输入用于UI显示
       });
 
       // 清空输入框
@@ -188,12 +248,12 @@ export default function ConversationModal() {
     currentConversation.models.map((modelKey) => {
       const [providerId, modelId] = modelKey.split(":");
 
-      // 获取该模型的所有响应，包括原始提示
+      // 获取该模型的所有响应，使用响应中存储的提示词
       const responses = currentConversation.responses
         .filter((r) => r.providerId === providerId && r.model === modelId)
         .map((r) => ({
           ...r,
-          prompt: currentConversation.prompt,
+          prompt: r.prompt || currentConversation.prompt, // 优先使用响应中的提示词，回退到对话的原始提示词
         }))
         .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
@@ -230,14 +290,6 @@ export default function ConversationModal() {
               ) : (
                 <Maximize className="h-4 w-4" />
               )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={closeModal}
-              title="关闭"
-            >
-              <X className="h-4 w-4" />
             </Button>
           </div>
         </DialogHeader>

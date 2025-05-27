@@ -31,6 +31,7 @@ export interface PromptResponse {
   error?: string;
   isStreaming?: boolean;
   abortController?: AbortController;
+  prompt?: string; // 对应的提示词，用于继续对话时显示
 }
 
 interface PromptStore {
@@ -52,6 +53,8 @@ interface PromptStore {
     providers: string[];
     models: string[];
     enableStreaming?: boolean;
+    continueConversation?: string; // 可选的对话ID，用于继续现有对话
+    userMessage?: string; // 用户的原始输入，用于UI显示
   }) => Promise<void>;
 
   updateResponse: (
@@ -100,39 +103,71 @@ export const usePromptStore = create<PromptStore>()(
       debounceTimers: new Map(),
 
       submitPrompt: async (data) => {
-        const { prompt, providers, models, enableStreaming = true } = data;
+        const {
+          prompt,
+          providers,
+          models,
+          enableStreaming = true,
+          continueConversation,
+          userMessage,
+        } = data;
 
         set({ isSubmitting: true });
 
         try {
-          // 创建提示记录
-          const promptId = crypto.randomUUID();
-          const promptEntry: PromptEntry = {
-            id: promptId,
-            prompt,
-            providers,
-            models,
-            timestamp: new Date(),
-            status: "pending",
-            responses: [],
-          };
+          let promptId: string;
+          let promptEntry: PromptEntry;
 
-          // 添加到状态
-          set((state) => ({
-            entries: [promptEntry, ...state.entries],
-          }));
+          if (continueConversation) {
+            // 继续现有对话
+            const existingEntry = get().entries.find(
+              (e) => e.id === continueConversation
+            );
+            if (!existingEntry) {
+              throw new Error("找不到指定的对话记录");
+            }
 
-          // 保存提示到 IndexedDB
-          const savedPromptId = await promptPersistenceService.savePrompt(
-            promptEntry
-          );
-          if (savedPromptId) {
-            // 存储ID映射
-            set((state) => {
-              const newPromptIdMap = new Map(state.promptIdMap);
-              newPromptIdMap.set(promptId, savedPromptId);
-              return { promptIdMap: newPromptIdMap };
-            });
+            promptId = existingEntry.id;
+            promptEntry = existingEntry;
+
+            // 更新对话状态为处理中
+            set((state) => ({
+              entries: state.entries.map((entry) =>
+                entry.id === promptId
+                  ? { ...entry, status: "pending" as const }
+                  : entry
+              ),
+            }));
+          } else {
+            // 创建新的提示记录
+            promptId = crypto.randomUUID();
+            promptEntry = {
+              id: promptId,
+              prompt,
+              providers,
+              models,
+              timestamp: new Date(),
+              status: "pending",
+              responses: [],
+            };
+
+            // 添加到状态
+            set((state) => ({
+              entries: [promptEntry, ...state.entries],
+            }));
+
+            // 保存提示到 IndexedDB
+            const savedPromptId = await promptPersistenceService.savePrompt(
+              promptEntry
+            );
+            if (savedPromptId) {
+              // 存储ID映射
+              set((state) => {
+                const newPromptIdMap = new Map(state.promptIdMap);
+                newPromptIdMap.set(promptId, savedPromptId);
+                return { promptIdMap: newPromptIdMap };
+              });
+            }
           }
 
           // 为每个模型创建响应任务
@@ -152,6 +187,7 @@ export const usePromptStore = create<PromptStore>()(
               timestamp: new Date(),
               isStreaming: enableStreaming,
               abortController,
+              prompt: userMessage || prompt, // 优先使用用户原始输入，回退到完整提示
             };
 
             // 添加到状态
